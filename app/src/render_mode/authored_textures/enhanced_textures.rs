@@ -28,9 +28,9 @@ const _: () = assert!(MAX_AUTHORED_LAYERS as usize <= assets::MAX_TEXTURE_LAYERS
 const LOW_PBR_TILE_SIZE: u32 = assets::texture::TILE_SIZE * 2;
 
 #[derive(Clone, Copy)]
-struct Source {
-    material: u32,
-    texture: u32,
+pub(super) struct Source {
+    pub(super) material: u32,
+    pub(super) texture: u32,
     frame: usize,
     count: usize,
     cutout: bool,
@@ -306,11 +306,22 @@ pub(crate) fn load_optional_enhanced_textures(
     keys: &MaterialKeys,
 ) -> Option<Arc<render_scene::EnhancedTextureAssets>> {
     let (selected, tile_size) = config::selected_packs()?;
+    load_selected(runtime, runtime, keys, selected, tile_size)
+}
+
+pub(super) fn load_selected(
+    base: &RuntimeAssets,
+    runtime: &RuntimeAssets,
+    keys: &MaterialKeys,
+    selected: Vec<PbrPack>,
+    tile_size: u32,
+) -> Option<Arc<render_scene::EnhancedTextureAssets>> {
     let packs: Vec<_> = selected
         .into_iter()
         .map(|pack| pack.with_terrain_aliases(keys.aliases()))
         .collect();
-    let groups = sources(runtime, keys);
+    let mut groups = sources(runtime, keys);
+    super::active_packs::remap_faces(base, runtime, keys, &mut groups);
     let fingerprint = cache::fingerprint_with_size(&packs, &groups, tile_size);
     if let Some(key) = fingerprint.as_ref()
         && let Some(mut report) = audit::load(key)
@@ -354,6 +365,48 @@ pub(crate) fn load_optional_enhanced_textures(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dxr_in_game_rtx_pack_decodes_without_external_configuration() {
+        use std::io::Write;
+        let root = tempfile::tempdir().unwrap();
+        let archive = root.path().join("fixture.mcpack");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        let manifest = serde_json::json!({"format_version":2,
+            "header":{"name":"DXR fixture","description":"Synthetic test", "uuid":uuid::Uuid::new_v4().to_string(),"version":[1,0,0],"min_engine_version":[1,0,0]},
+            "modules":[{"type":"resources","uuid":uuid::Uuid::new_v4().to_string(),"version":[1,0,0]}],"capabilities":["raytraced"]});
+        zip.start_file("manifest.json", options).unwrap();
+        zip.write_all(&serde_json::to_vec(&manifest).unwrap())
+            .unwrap();
+        zip.start_file("textures/blocks/cauldron_inner.texture_set.json", options)
+            .unwrap();
+        zip.write_all(br#"{"format_version":"1.16.100","minecraft:texture_set":{"color":"cauldron_inner","metalness_emissive_roughness":"cauldron_inner_mer"}}"#).unwrap();
+        for (name, rgba) in [
+            ("cauldron_inner", [180, 120, 60, 255]),
+            ("cauldron_inner_mer", [255, 0, 10, 255]),
+        ] {
+            let mut bytes = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(2, 2, image::Rgba(rgba)))
+                .write_to(&mut bytes, image::ImageFormat::Png)
+                .unwrap();
+            zip.start_file(format!("textures/blocks/{name}.png"), options)
+                .unwrap();
+            zip.write_all(bytes.get_ref()).unwrap();
+        }
+        zip.finish().unwrap();
+        let mut library =
+            resource_pack::GlobalPackLibrary::open(root.path().join("packs"), [1, 0, 0]).unwrap();
+        let id = library.import(&archive).unwrap().imported[0].id;
+        library.activate(id).unwrap();
+        let stack = library.apply().unwrap();
+        let (runtime, keys) = shared_carrier();
+        let maps =
+            super::super::active_packs::load(&runtime, &runtime, &keys, Some(stack)).unwrap();
+        let reference = maps.material_reference(1, runtime.material(1).texture);
+        assert_ne!(reference & assets::texture::PBR_REF_MATERIAL, 0);
+        assert_eq!(albedo(&maps, &runtime, 1), Some([180, 120, 60, 255]));
+    }
 
     /// Creates two distinct materials that share one carrier image.
     pub(super) fn shared_carrier() -> (RuntimeAssets, MaterialKeys) {

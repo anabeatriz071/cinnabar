@@ -2257,7 +2257,7 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   default). The opaque-cube sunlight cache retains movement stability and masks
   withdrawn instances individually. Finite-sun probes and near-tangent attenuation
   preserve soft edges and readable contrast. PBR texture-set decoding is connected
-  independently of the disabled Enhanced renderer, with bounded complete uploads,
+  independently of the disabled Enhanced renderer, including active in-game global RTX packs and live selection reloads, with bounded complete uploads,
   configurable texture resolution, normal/height-derived normal maps, MER emission,
   GGX direct terms and one-bounce metal reflections against cached opaque geometry.
   Authored albedo modulates the existing lightmapped scene; reflection misses use

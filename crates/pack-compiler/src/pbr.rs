@@ -84,7 +84,7 @@ impl PbrFormat {
     #[must_use]
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
-            "auto" | "unspecified" => Some(Self::Unspecified),
+            "auto" | "unspecified" | "bedrock" => Some(Self::Unspecified),
             "lab-pbr/1.3" | "labpbr/1.3" => Some(Self::LabPbr13),
             "old-pbr" | "oldpbr" | "legacy" | "seus-pbr" => Some(Self::Legacy),
             _ => None,

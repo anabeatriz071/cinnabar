@@ -14,7 +14,10 @@ use ui::RenderMode;
 
 use client_state::RuntimeSettings;
 
+mod active_packs;
 mod enhanced_textures;
+#[derive(Resource, Default)]
+pub(crate) struct DxrPackSelection(pub Option<Arc<resource_pack::ValidatedPackStack>>);
 
 type AuthoredMaps = Option<Arc<EnhancedTextureAssets>>;
 type Receiver = mpsc::Receiver<AuthoredMaps>;
@@ -30,6 +33,8 @@ pub(crate) struct AuthoredTextureLoading {
     base: Arc<RuntimeAssets>,
     keys: Option<MaterialKeys>,
     loading: Loading,
+    selection: Option<Arc<resource_pack::ValidatedPackStack>>,
+    runtime: Option<Arc<RuntimeAssets>>,
 }
 
 impl AuthoredTextureLoading {
@@ -39,6 +44,8 @@ impl AuthoredTextureLoading {
             base,
             keys,
             loading: Loading::Unrequested,
+            selection: None,
+            runtime: None,
         }
     }
 
@@ -65,7 +72,7 @@ impl AuthoredTextureLoading {
         if !matches!(self.loading, Loading::Unrequested) {
             return;
         }
-        let Some(keys) = self.keys.take() else {
+        let Some(keys) = self.keys.clone() else {
             self.loading = Loading::Complete(None);
             return;
         };
@@ -124,22 +131,23 @@ fn spawn(
     base: Arc<RuntimeAssets>,
     keys: MaterialKeys,
     limits: Option<wgpu::Limits>,
+    selection: Option<Arc<resource_pack::ValidatedPackStack>>,
+    runtime: Arc<RuntimeAssets>,
 ) -> io::Result<Receiver> {
     let (sender, receiver) = mpsc::channel();
     std::thread::Builder::new()
         .name("Authored terrain materials".to_owned())
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
-            let maps =
-                enhanced_textures::load_optional_enhanced_textures(&base, &keys).filter(|maps| {
-                    let supported = limits
-                        .as_ref()
-                        .is_none_or(|limits| maps.fits_device_limits(limits));
-                    if !supported {
-                        warn!("unsupported authored terrain maps; retained carrier materials");
-                    }
-                    supported
-                });
+            let maps = active_packs::load(&base, &runtime, &keys, selection).filter(|maps| {
+                let supported = limits
+                    .as_ref()
+                    .is_none_or(|limits| maps.fits_device_limits(limits));
+                if !supported {
+                    warn!("unsupported authored terrain maps; retained carrier materials");
+                }
+                supported
+            });
             let _ = sender.send(maps);
         })?;
     Ok(receiver)
@@ -164,6 +172,7 @@ pub(super) fn update_authored_textures(
     textures: Option<ResMut<ChunkTextureAssets>>,
     reload: Option<Res<ChunkTextureReload>>,
     device: Option<Res<RenderDevice>>,
+    selection: Option<Res<DxrPackSelection>>,
 ) {
     let (Some(mut loading), Some(mut textures)) = (loading, textures) else {
         return;
@@ -183,10 +192,52 @@ pub(super) fn update_authored_textures(
                 .contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY)
         });
     let limits = device.as_ref().map(|device| device.limits());
-    if dxr {
-        loading.request(|base, keys| spawn(base, keys, limits.clone()));
+    if reload
+        .as_ref()
+        .is_some_and(|reload| reload.geometry_pending())
+    {
+        return;
     }
-    loading.begin(mode, |base, keys| spawn(base, keys, limits.clone()));
+    let selected = selection.and_then(|selection| selection.0.clone());
+    let changed = match (&loading.selection, &selected) {
+        (Some(old), Some(new)) => !Arc::ptr_eq(old, new),
+        (None, None) => false,
+        _ => true,
+    };
+    if changed
+        || loading
+            .runtime
+            .as_ref()
+            .is_some_and(|old| !Arc::ptr_eq(old, textures.assets()))
+    {
+        loading.selection = selected.clone();
+        loading.runtime = Some(textures.assets().clone());
+        loading.loading = Loading::Unrequested;
+    }
+    loading
+        .runtime
+        .get_or_insert_with(|| textures.assets().clone());
+    let runtime = textures.assets().clone();
+    if dxr {
+        loading.request(|base, keys| {
+            spawn(
+                base,
+                keys,
+                limits.clone(),
+                selected.clone(),
+                runtime.clone(),
+            )
+        });
+    }
+    loading.begin(mode, |base, keys| {
+        spawn(
+            base,
+            keys,
+            limits.clone(),
+            selected.clone(),
+            runtime.clone(),
+        )
+    });
     loading.poll();
     if let Some(limits) = &limits {
         loading.discard_unsupported(limits);

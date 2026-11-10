@@ -14,7 +14,8 @@ const WORKER_UNAVAILABLE: &str = "The resource pack worker is unavailable. Resta
 
 /// Creates the import worker; no filesystem or ZIP work runs on a frame.
 pub(crate) fn configure(app: &mut App, root: PathBuf, config_root: PathBuf, files: Vec<PathBuf>) {
-    app.insert_resource(worker::Worker::new(root, config_root, files))
+    app.init_resource::<crate::render_mode::authored_textures::DxrPackSelection>()
+        .insert_resource(worker::Worker::new(root, config_root, files))
         .add_systems(
             Update,
             drive.before(crate::runtime::network::reload_resource_packs),
@@ -87,6 +88,8 @@ fn drive(
     mut reload: ResMut<PackReload>,
     mut drops: MessageReader<bevy::window::FileDragAndDrop>,
     mut published: Local<Option<PublishedOverlay>>,
+    mut dxr: Option<ResMut<crate::render_mode::authored_textures::DxrPackSelection>>,
+    mut pending_dxr: Local<Option<Arc<resource_pack::ValidatedPackStack>>>,
     worlds: Option<ResMut<LocalWorlds>>,
 ) {
     let mut snapshot_changed = false;
@@ -153,6 +156,7 @@ fn drive(
                 snapshot_changed = true;
             }
             worker::Event::Apply(stack, selection, origin) => {
+                *pending_dxr = Some(stack.clone());
                 let revision = match origin {
                     worker::ApplyOrigin::Startup => reload.request_globals_initial(stack),
                     worker::ApplyOrigin::User => reload.request_globals(stack),
@@ -166,6 +170,9 @@ fn drive(
     }) {
         let (_, selection) = worker.awaiting.take().expect("completed selection");
         worker.send(worker::Command::Commit(selection));
+        if let Some(dxr) = dxr.as_deref_mut() {
+            dxr.0 = pending_dxr.take();
+        }
     }
     if worker.minecraft_import_pending {
         if let Some(error) = reload.error() {

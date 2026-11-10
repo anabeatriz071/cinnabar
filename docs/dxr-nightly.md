@@ -21,23 +21,14 @@ Sunlight and local torch/lantern lighting need no RTX pack. Normal detail, mappe
 emission and reflective metals use authored PBR materials. Metal reflections follow
 the pack's metalness and roughness maps.
 
-Extract a Bedrock RTX pack to a folder, then create
-`%LOCALAPPDATA%\Cinnabar\dxr-pbr.json` containing, for example:
+Import the RTX `.mcpack` through **Settings → Global Resources**, activate it,
+and apply the selection. With DXR Lighting enabled, its texture sets load automatically,
+including normal, metalness, emission and roughness maps. Changing or removing the
+active pack reloads those maps; no JSON file or restart is needed.
 
-```json
-{
-  "max_tile_size": 128,
-  "packs": [
-    {"path": "C:/Packs/MyRTXPack", "format": "bedrock"}
-  ]
-}
-```
-
-Point `path` at the extracted pack root containing its texture folders. Restart
-Cinnabar after editing this configuration. Texture sets support colour, normal or
-height-derived normal detail, and metalness/emissive/roughness maps. Actual surface
-displacement and subsurface scattering are not implemented. Existing LabPBR import
-is also retained. Malformed or missing optional maps retain carrier materials.
+The optional `dxr-pbr.json` configuration remains available for loose development
+packs when no global resource pack is active. Its `format: "bedrock"` spelling is
+accepted. The default in-game texture cap is 128 pixels per tile.
 
 `max_tile_size` defaults to 128 and accepts powers of two from 16 through 512.
 Bigger maps cost memory; this cap minifies maps without changing authoritative
