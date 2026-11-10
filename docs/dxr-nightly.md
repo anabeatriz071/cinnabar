@@ -37,7 +37,10 @@ pass. Fresh in-game removal, streaming, visual quality and RTX 5060 performance
 acceptance remain pending.
 
 The workflow validates the selected Windows regression tests alongside the release
-build, then publishes only when both jobs succeed. Test and release dependency
-caches are separate, and Go dependencies are cached too. The first run fills the
-caches; later compatible runs reuse them. Hosted-runner capacity, cache eviction
+build, then publishes only when both jobs succeed. Test and release build caches
+are separate and retain workspace outputs as well as dependencies. Content hashes
+restore timestamps only for unchanged source inputs, so Cargo can reuse unchanged
+crates while rebuilding edits. Complete snapshots use per-commit keys and restore
+the latest compatible snapshot; the first snapshot bootstraps from the existing
+dependency cache. Go caching belongs to the packaging job, which builds the core. Hosted-runner capacity, cache eviction
 and optimized linking still affect build time.

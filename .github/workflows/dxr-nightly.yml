@@ -35,22 +35,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: rustfmt
-      # Profiles have separate caches. Workspace code is rebuilt from this checkout,
-      # while immutable dependencies survive between branch runs.
-      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - name: Restore test build cache
+        id: rust-cache
+        uses: ./.github/actions/dxr-build-cache
         with:
-          shared-key: dxr-windows-tests-v1
-          cache-bin: false
+          lane: tests
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
       - uses: actions/setup-go@v6
         with:
           go-version: stable
-          cache-dependency-path: |
-            core/go.sum
-            tools/localserver/go.sum
-            go.work.sum
+          cache: false
       - name: Check formatting
         run: cargo fmt --check
       - name: Build and run the DXR regression tests together
@@ -64,6 +60,14 @@ jobs:
             -E 'test(dxr) | test(gui_models::fire::tests) | binary(dx12_terrain_shadow)' \
             --no-fail-fast --success-output immediate
 
+      - name: Save test build cache
+        uses: ./.github/actions/dxr-build-cache
+        with:
+          phase: save
+          lane: tests
+          key: ${{ steps.rust-cache.outputs.key }}
+          matched-key: ${{ steps.rust-cache.outputs.matched-key }}
+
   package:
     name: Package Windows nightly
     if: github.event.repository.fork && github.ref == 'refs/heads/dxr-terrain-shadows'
@@ -72,10 +76,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@1.99.0
-      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - name: Restore release build cache
+        id: rust-cache
+        uses: ./.github/actions/dxr-build-cache
         with:
-          shared-key: dxr-windows-release-v1
-          cache-bin: false
+          lane: release
       - uses: actions/setup-go@v6
         with:
           go-version: stable
@@ -83,6 +88,7 @@ jobs:
             core/go.sum
             tools/localserver/go.sum
             go.work.sum
+            .github/workflows/dxr-nightly.yml
       - name: Install Windows packaging tools
         shell: pwsh
         run: |
@@ -100,6 +106,13 @@ jobs:
           make package-binaries PACKAGE_CARGO_FLAGS=--timings
           pwsh -NoProfile -File packaging/windows/build-installer.ps1
           bash packaging/check-payload.sh windows .local/dist/windows-release/payload
+      - name: Save release build cache
+        uses: ./.github/actions/dxr-build-cache
+        with:
+          phase: save
+          lane: release
+          key: ${{ steps.rust-cache.outputs.key }}
+          matched-key: ${{ steps.rust-cache.outputs.matched-key }}
       - name: Prepare test downloads
         shell: pwsh
         run: |

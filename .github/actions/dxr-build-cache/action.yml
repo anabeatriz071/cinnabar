@@ -1,0 +1,71 @@
+name: DXR build cache
+description: Reuse complete per-commit builds with content-checked source timestamps
+inputs:
+  phase:
+    description: restore or save
+    default: restore
+  lane:
+    description: tests or release
+    required: true
+  key:
+    description: Primary key returned by restore
+    default: ''
+  matched-key:
+    description: Matched key returned by restore
+    default: ''
+outputs:
+  key:
+    description: Primary cache key
+    value: ${{ steps.restore.outputs.cache-primary-key }}
+  matched-key:
+    description: Restored cache key, empty on a miss
+    value: ${{ steps.restore.outputs.cache-matched-key }}
+runs:
+  using: composite
+  steps:
+    - name: Plan compatible snapshot keys
+      if: inputs.phase == 'restore'
+      id: keys
+      shell: bash
+      env:
+        SNAPSHOT_PREFIX: dxr-full-v1-${{ runner.os }}-${{ inputs.lane }}-${{ hashFiles('**/Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml', '.github/workflows/dxr-nightly.yml', '.github/actions/dxr-build-cache/action.yml', '.github/actions/build-cache/cache.py') }}
+        SNAPSHOT_COMMIT: ${{ github.sha }}
+      run: |
+        printf 'prefix=%s\nkey=%s-%s\n' "$SNAPSHOT_PREFIX" "$SNAPSHOT_PREFIX" "$SNAPSHOT_COMMIT" >> "$GITHUB_OUTPUT"
+    - name: Restore complete Rust build
+      if: inputs.phase == 'restore'
+      id: restore
+      uses: actions/cache/restore@v5
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ steps.keys.outputs.key }}
+        restore-keys: ${{ steps.keys.outputs.prefix }}-
+    - name: Bootstrap from the existing dependency cache
+      if: inputs.phase == 'restore' && steps.restore.outputs.cache-matched-key == ''
+      uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      with:
+        shared-key: dxr-windows-${{ inputs.lane }}-v1
+        cache-bin: false
+        save-if: false
+    - name: Restore timestamps only for identical source contents
+      if: inputs.phase == 'restore'
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: python3 .github/actions/build-cache/cache.py restore-inputs
+    - name: Verify source contents before saving compiler outputs
+      if: inputs.phase == 'save'
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: python3 .github/actions/build-cache/cache.py verify-inputs
+    - name: Save complete Rust build for this commit
+      if: inputs.phase == 'save' && inputs.key != inputs.matched-key
+      uses: actions/cache/save@v5
+      with:
+        key: ${{ inputs.key }}
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
