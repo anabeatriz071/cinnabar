@@ -69,7 +69,7 @@ fn dx12_terrain_shadow_updates_after_removal() {
     for (index, x) in [0.0, 8.0].into_iter().enumerate() {
         let block = geometry::build_opaque_mesh(&device, &mut encoder, &VERTICES, &INDICES);
         let transform = [1.0, 0.0, 0.0, x, 0.0, 1.0, 0.0, 2.0, 0.0, 0.0, 1.0, 0.0];
-        scene[index] = Some(TlasInstance::new(&block, transform, 0, 0xff));
+        scene[index] = Some(TlasInstance::new(&block, transform, index as u32, 0xff));
     }
     encoder.build_acceleration_structures([], [&scene]);
     queue.submit([encoder.finish()]);
@@ -86,7 +86,20 @@ fn dx12_terrain_shadow_updates_after_removal() {
     assert_eq!(trace(&device, &queue, &pipeline, &scene), [1, 0, 1]);
     for samples in [1, 4] {
         assert_eq!(
-            composite_pixel(&device, &queue, &scene, samples),
+            composite_pixel(&device, &queue, &scene, samples, 0.15, [0; 4]),
+            [188, 188, 188, 255]
+        );
+    }
+
+    // The submitted TLAS still contains both blocks. Withdrawing one instance through the
+    // frame mask removes only its shadow, without waiting for a replacement GPU build.
+    for samples in [1, 4] {
+        assert_eq!(
+            composite_pixel(&device, &queue, &scene, samples, 0.15, [1, 0, 0, 0]),
+            [255; 4]
+        );
+        assert_eq!(
+            composite_pixel(&device, &queue, &scene, samples, 8.15, [1, 0, 0, 0]),
             [188, 188, 188, 255]
         );
     }
@@ -97,12 +110,22 @@ fn dx12_terrain_shadow_updates_after_removal() {
     queue.submit([encoder.finish()]);
     assert_eq!(trace(&device, &queue, &pipeline, &scene), [0, 0, 1]);
     for samples in [1, 4] {
-        assert_eq!(composite_pixel(&device, &queue, &scene, samples), [255; 4]);
+        assert_eq!(
+            composite_pixel(&device, &queue, &scene, samples, 0.15, [0; 4]),
+            [255; 4]
+        );
     }
 }
 
 /// Runs the game shader over a known depth sample and reads the blended scene color.
-fn composite_pixel(device: &Device, queue: &Queue, scene: &Tlas, samples: u32) -> [u8; 4] {
+fn composite_pixel(
+    device: &Device,
+    queue: &Queue,
+    scene: &Tlas,
+    samples: u32,
+    ground_x: f32,
+    invalid_instances: [u32; 4],
+) -> [u8; 4] {
     use wgpu::{
         Color, Extent3d, LoadOp, Operations, RenderPassColorAttachment,
         RenderPassDepthStencilAttachment, RenderPassDescriptor, StoreOp, TexelCopyBufferInfo,
@@ -147,12 +170,13 @@ fn composite_pixel(device: &Device, queue: &Queue, scene: &Tlas, samples: u32) -
             [0.02, 0.0, 0.0, 0.0],
             [0.0, 0.02, 0.0, 0.0],
             [0.0, 0.0, 1.0, 0.0],
-            [0.15, 0.0, -0.15, 1.0],
+            [ground_x, 0.0, -0.15, 1.0],
         ],
-        eye_radius: [0.15, -2.0, 0.35, 32.0],
+        eye_radius: [ground_x, -2.0, 0.35, 32.0],
         sun_strength: [0.24253562, 0.9701425, 0.0, 0.5],
         viewport: [0.0, 0.0, 1.0, 1.0],
         ray_length: [32.0, 0.0, 0.0, 0.0],
+        invalid_instances,
     };
     let uniform = device.create_buffer_init(&BufferInitDescriptor {
         label: None,

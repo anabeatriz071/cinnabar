@@ -18,9 +18,11 @@ their cached terrain structures and restores ordinary rendering.
 
 Terrain uploads run before optional shadow builds. During continued uploads or
 deferred terrain work, one shadow section may build every eight eligible frames;
-otherwise one may build per frame. Shadow builds wait while the terrain arena grows. Stale casters are withdrawn on a
-mesh change, and only one shadow build submission may remain in flight. These
-limits reduce competing work; they do not establish a hardware performance pass.
+otherwise one may build per frame. Shadow builds wait while the terrain arena grows.
+Edited or unloaded casters are masked individually while the previous scene stays
+visible during replacement builds. Equivalent opaque geometry reuses its acceleration
+structure, and a retention margin stabilizes caster selection during movement.
+Only one shadow build submission may remain in flight. These limits reduce competing work; they do not establish a hardware performance pass.
 
 To test, join a local world during daylight, compare shadows Off and On, and break
 an elevated opaque cube that casts a clear shadow. Check that the block changes,

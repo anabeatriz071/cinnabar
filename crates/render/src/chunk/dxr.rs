@@ -20,11 +20,12 @@ use render_scene::{AtmosphereFrame, ChunkRenderInstance, SkyKind};
 use std::sync::atomic::{AtomicBool, Ordering};
 use wgpu::util::DeviceExt;
 
+mod cache;
 mod geometry;
 mod pipeline;
 use pipeline::{Frame, create_pipeline};
 
-const MAX_SECTIONS: u32 = 128;
+use cache::{MAX_SECTIONS, invalid_instance_mask, retain_caster, select_casters};
 const BUILDS_PER_FRAME: usize = 1;
 const BUSY_BUILD_INTERVAL: u8 = 8;
 const CASTER_RADIUS: f32 = 72.0;
@@ -188,39 +189,51 @@ fn prepare(
         return;
     };
     let eye = view.world_from_view.translation();
-    let mut candidates: Vec<_> = terrain
+    let candidates: HashMap<_, _> = terrain
         .iter()
-        .filter(|(entity, chunk, allocation)| {
-            !arena.pending_removals.contains(entity)
-                && allocation.key == chunk.key
-                && allocation.generation == chunk.generation
-                && chunk.cube_layout.solid_len() > 0
+        .filter(|(entity, chunk, _)| {
+            !arena.pending_removals.contains(entity) && chunk.cube_layout.solid_len() > 0
         })
-        .filter_map(|(entity, chunk, _)| {
+        .filter_map(|(entity, chunk, allocation)| {
             let origin = Vec3::from_array(chunk.origin.map(|axis| axis as f32));
             let extent = Vec3::splat(world::SUB_CHUNK_SIDE as f32);
-            let distance = (eye - eye.clamp(origin, origin + extent)).length_squared();
-            (distance < CASTER_RADIUS * CASTER_RADIUS).then_some((distance, entity, chunk))
+            let distance = (eye - eye.clamp(origin, origin + extent)).length();
+            let uploaded = allocation.key == chunk.key && allocation.generation == chunk.generation;
+            retain_caster(distance, true, CASTER_RADIUS)
+                .then_some((entity, (distance, chunk, uploaded)))
         })
         .collect();
-    candidates.sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
-    candidates.truncate(MAX_SECTIONS as usize);
-    let keep: HashMap<_, _> = candidates
-        .iter()
-        .map(|&(_, entity, chunk)| (entity, chunk))
-        .collect();
-    let previous_sections = shadows.sections.len();
     shadows.sections.retain(|entity, section| {
-        keep.get(entity).is_some_and(|chunk| {
-            section.origin == chunk.origin
-                && section.layout == chunk.cube_layout
-                && Arc::ptr_eq(&section.mesh, &chunk.cube_quads)
+        candidates.get(entity).is_some_and(|(_, chunk, _)| {
+            let valid = section.origin == chunk.origin
+                && opaque_geometry_matches(
+                    &section.mesh,
+                    section.layout,
+                    &chunk.cube_quads,
+                    chunk.cube_layout,
+                );
+            if valid {
+                // Refresh identity after equivalent mesh publications without rebuilding its BLAS.
+                section.mesh = chunk.cube_quads.clone();
+                section.layout = chunk.cube_layout;
+            }
+            valid
         })
     });
-    // Withdraw stale casters immediately, even when builds must wait for terrain or the GPU.
-    if shadows.sections.len() != previous_sections {
-        shadows.scene = None;
-    }
+    let desired = select_casters(
+        candidates
+            .iter()
+            .filter_map(|(&entity, &(distance, _, uploaded))| {
+                let resident = shadows.sections.contains_key(&entity);
+                // Equivalent resident geometry is safe across upload generations; new geometry
+                // enters the ray scene only after its terrain allocation has been published.
+                (uploaded || resident).then_some((distance, entity, resident))
+            }),
+        CASTER_RADIUS,
+        MAX_SECTIONS,
+    );
+    // Keep the previous TLAS while replacements build. Its per-instance mask withdraws edited
+    // or unloaded casters immediately without switching every other shadow off.
     if shadows.pending.load(Ordering::Acquire) {
         return;
     }
@@ -240,15 +253,27 @@ fn prepare(
     }
     let gpu = device.wgpu_device();
     let mut encoder = None;
-    for (_, entity, chunk) in candidates
-        .into_iter()
-        .filter(|(_, entity, _)| !shadows.sections.contains_key(entity))
+    for entity in desired
+        .iter()
+        .copied()
+        .filter(|entity| !shadows.sections.contains_key(entity))
         .take(build_limit)
         .collect::<Vec<_>>()
     {
+        let chunk = candidates[&entity].1;
         let encoder =
             encoder.get_or_insert_with(|| gpu.create_command_encoder(&Default::default()));
         let blas = build_section(gpu, encoder, chunk);
+        if shadows.sections.len() == MAX_SECTIONS {
+            let victim = shadows
+                .sections
+                .keys()
+                .filter(|entity| !desired.contains(entity))
+                .max()
+                .copied()
+                .expect("a new desired caster replaces one resident outside the desired set");
+            shadows.sections.remove(&victim);
+        }
         shadows.sections.insert(
             entity,
             Section {
@@ -279,7 +304,12 @@ fn prepare(
         let section = &shadows.sections[entity];
         let [x, y, z] = section.origin.map(|axis| axis as f32);
         let transform = [1.0, 0.0, 0.0, x, 0.0, 1.0, 0.0, y, 0.0, 0.0, 1.0, z];
-        scene[index] = Some(wgpu::TlasInstance::new(&section.blas, transform, 0, 0xff));
+        scene[index] = Some(wgpu::TlasInstance::new(
+            &section.blas,
+            transform,
+            index as u32,
+            0xff,
+        ));
     }
     let mut encoder = encoder.unwrap_or_else(|| gpu.create_command_encoder(&Default::default()));
     encoder.build_acceleration_structures([], [&scene]);
@@ -313,6 +343,22 @@ impl ShadowBuildBudget {
         self.busy_frames = 0;
         BUILDS_PER_FRAME
     }
+}
+
+/// Light, material or allocation identity changes do not change the opaque ray geometry.
+fn opaque_geometry_matches(
+    cached: &Arc<[PackedQuad]>,
+    cached_layout: CubeQuadLayout,
+    current: &Arc<[PackedQuad]>,
+    current_layout: CubeQuadLayout,
+) -> bool {
+    let len = cached_layout.solid_len() as usize;
+    len == current_layout.solid_len() as usize
+        && (Arc::ptr_eq(cached, current)
+            || cached[..len]
+                .iter()
+                .zip(&current[..len])
+                .all(|(a, b)| a.words()[0] == b.words()[0]))
 }
 
 /// Expands only the mesher's opaque runs. Each greedy quad becomes two triangles.
@@ -438,6 +484,9 @@ fn composite(world: &World, query: ViewQuery<ShadowView>, mut context: RenderCon
             viewport.physical_size.y as f32,
         ],
         ray_length: [RAY_LENGTH, 0.0, 0.0, 0.0],
+        invalid_instances: invalid_instance_mask(&shadows.ordered, |entity| {
+            shadows.sections.contains_key(entity)
+        }),
     };
     let uniform = gpu.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("DXR shadow camera"),
@@ -488,6 +537,36 @@ fn composite(world: &World, query: ViewQuery<ShadowView>, mut context: RenderCon
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn equivalent_mesh_publications_reuse_opaque_casters_but_edits_invalidate_them() {
+        let layout = CubeQuadLayout::from_solid_counts([1, 0, 0, 0, 0, 0]);
+        let mesh: Arc<[PackedQuad]> =
+            Arc::from([PackedQuad::new([0; 3], Face::NegativeX, 1, 1, 0)]);
+        let material: Arc<[PackedQuad]> =
+            Arc::from([PackedQuad::new([0; 3], Face::NegativeX, 1, 1, 1)]);
+        let edit: Arc<[PackedQuad]> =
+            Arc::from([PackedQuad::new([1, 0, 0], Face::NegativeX, 1, 1, 0)]);
+        assert!(opaque_geometry_matches(&mesh, layout, &material, layout));
+        assert!(!opaque_geometry_matches(&mesh, layout, &edit, layout));
+        assert!(!opaque_geometry_matches(
+            &mesh,
+            layout,
+            &Arc::from([]),
+            CubeQuadLayout::default()
+        ));
+    }
+
+    #[test]
+    fn sunlight_shader_accepts_selective_instance_invalidation() {
+        let shader = naga::front::wgsl::parse_str(include_str!("dxr.wgsl")).unwrap();
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        )
+        .validate(&shader)
+        .unwrap();
+    }
 
     /// Streaming cannot indefinitely starve shadows; only one build is admitted per busy interval.
     #[test]

@@ -46,4 +46,5 @@ pub(super) struct Frame {
     pub(super) sun_strength: [f32; 4],
     pub(super) viewport: [f32; 4],
     pub(super) ray_length: [f32; 4],
+    pub(super) invalid_instances: [u32; 4],
 }

@@ -2254,13 +2254,16 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   Its MSAA nametag composite blends against resolved scene colour, so labels partly
   occluded by world silhouettes get a dark edge fringe; per-sample composition is incomplete.
 - Experimental Windows DX12 sunlight shadows are controlled by the persisted Video toggle
-  (Off by default), trace nearby resident opaque cube terrain, and withdraw stale casters
-  on mesh changes. Continued terrain uploads admit one shadow build every eight eligible
-  frames, preventing indefinite starvation; arena growth still suspends builds, and only
+  (Off by default), trace nearby resident opaque cube terrain, and mask edited or unloaded
+  instances individually while retaining the submitted scene during replacement builds.
+  Equivalent opaque geometry reuses its BLAS; distance hysteresis stabilizes caster selection
+  and surface-normal ray offsets replace view-direction offsets. Continued terrain uploads
+  admit one shadow build every eight eligible frames, preventing indefinite starvation; arena growth still suspends builds, and only
   one shadow submission stays in flight. The headless probe checks ray queries and
   block removal; the earlier prototype slowdown and stalled terrain have not yet been
   reproduced on this fork. An RTX 5060 log confirms DX12 ray-query support and a large
-  terrain backlog; visible shadow activation remains unconfirmed. Fresh in-game removal,
+  terrain backlog. User screenshots confirm partial shadows with movement-related popping;
+  visual acceptance of the stability changes remains pending. Fresh in-game removal,
   chunk streaming and RTX 5060 performance
   acceptance, non-cube and cutout casters, Bedrock RTX materials and path tracing remain
   incomplete. See `docs/dxr-nightly.md` for test-build scope and the acceptance scenario.
