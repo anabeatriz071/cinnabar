@@ -2253,22 +2253,26 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   Diagnostics or bounded fixtures do not establish safe general gameplay use.
   Its MSAA nametag composite blends against resolved scene colour, so labels partly
   occluded by world silhouettes get a dark edge fringe; per-sample composition is incomplete.
-- Experimental Windows DX12 sunlight shadows use a persisted Video toggle (Off by
-  default) and nearby resident opaque cube terrain. Edited or unloaded instances are
-  masked individually while replacement builds retain the submitted scene. Equivalent
-  opaque geometry reuses its BLAS; distance hysteresis and surface-normal ray offsets
-  stabilize movement. Fixed finite-sun disk probes soften edges using two rays per
-  shaded sample and up to four on mixed coverage. Sun-facing attenuation follows the
-  receiver normal and retains at least 45% of scene colour; this approximate composite
-  does not supply indirect lighting or denoising. Continued uploads admit one shadow
-  build every eight eligible frames; arena growth suspends builds, and only one shadow
-  submission stays in flight. RTX 5060 user feedback confirms activation and that the
-  stability change stopped disappearing shadows. Softness, direct-light compositing,
-  in-game block removal, streaming and GPU performance still require acceptance.
-  The headless probe covers occlusion, selective removal and partial sun coverage;
-  a missing GPU fixture does not establish hardware acceptance. Non-cube and cutout
-  casters, Bedrock RTX materials and path tracing remain incomplete. See
-  `docs/dxr-nightly.md` for scope and the acceptance scenario.
+- Experimental Windows DX12 lighting uses the persisted Video DXR toggle (Off by
+  default). The opaque-cube sunlight cache retains movement stability and masks
+  withdrawn instances individually. Finite-sun probes and near-tangent attenuation
+  preserve soft edges and readable contrast. PBR texture-set decoding is connected
+  independently of the disabled Enhanced renderer, with bounded complete uploads,
+  configurable texture resolution, normal/height-derived normal maps, MER emission,
+  GGX direct terms and one-bounce metal reflections against cached opaque geometry.
+  Authored albedo modulates the existing lightmapped scene; reflection misses use
+  approximate sky colour and roughness filters texture detail, not reflection geometry.
+  Placed torch/lantern variants and both local hands publish bounded direct lights;
+  discovery scans two changed sections per frame, retains at most 32 sources and
+  evaluates four eligible lights per sample. Hand anchors and source colours are
+  provisional. Stable ray-material slots reserve about 24 MiB; only changed sections
+  upload. CPU/shader checks and hardware probes cover the resource contracts, while
+  RTX visual/performance acceptance of this batch, in-game removal and streaming
+  remain pending. Opaque sunlight activation and the movement stability change have
+  user confirmation. Non-cube/cutout ray geometry, actor/water receivers, other-player
+  held lights, displacement, subsurface scattering, indirect light, reflection denoising
+  and full Bedrock RTX path tracing remain incomplete. The legacy Enhanced renderer
+  stays disabled. See `docs/dxr-nightly.md` for setup, bounds and acceptance scenarios.
 - Experimental Java shader packs (Iris/OptiFine format) are built into every client channel.
   Shaders start Off. Terrain expansion currently needs nine compute storage buffers:
   six packed-chunk sources plus three job, vertex-output and atlas-remap buffers.

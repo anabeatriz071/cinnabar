@@ -6,12 +6,19 @@ use std::{
 use pack_compiler::pbr::{PbrColorStyle, PbrFormat, PbrNormalFormat, PbrPack};
 use serde::Deserialize;
 
+const DEFAULT_TILE_SIZE: u32 = 128;
+fn default_tile_size() -> u32 {
+    DEFAULT_TILE_SIZE
+}
+
 const LOCAL_CONFIG: &str = ".local/enhanced-pbr.json";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Config {
     packs: Vec<Pack>,
+    #[serde(default = "default_tile_size")]
+    max_tile_size: u32,
     #[serde(default)]
     complete_material: bool,
 }
@@ -29,6 +36,15 @@ struct Pack {
 /// Parses explicit pack formats and resolves paths relative to the config file.
 fn configuration(bytes: &[u8], parent: &Path) -> Result<Vec<PbrPack>, String> {
     let config: Config = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
+    if !config.max_tile_size.is_power_of_two()
+        || config.max_tile_size < assets::texture::TILE_SIZE
+        || config.max_tile_size > assets::texture::PBR_TILE_SIZE
+    {
+        return Err(
+            "max_tile_size must be a power of two between the base tile size and the PBR limit"
+                .to_owned(),
+        );
+    }
     config
         .packs
         .into_iter()
@@ -83,12 +99,19 @@ fn environment_packs(value: &str) -> Vec<PbrPack> {
 }
 
 /// Selects existing pack directories from the override or local configuration.
-pub(super) fn selected_packs() -> Option<Vec<PbrPack>> {
+pub(super) fn selected_packs() -> Option<(Vec<PbrPack>, u32)> {
+    let mut tile_size = DEFAULT_TILE_SIZE;
     let packs: Vec<PbrPack> = if let Some(value) = env::var_os(super::ENHANCED_PBR_DIR_ENVIRONMENT)
     {
         environment_packs(&value.to_string_lossy())
     } else {
-        let path = Path::new(LOCAL_CONFIG);
+        let installed = launcher::install_layout::InstallLayout::discover()
+            .ok()
+            .map(|layout| layout.user_config_root.join("dxr-pbr.json"));
+        let path = installed
+            .as_deref()
+            .filter(|path| path.is_file())
+            .unwrap_or(Path::new(LOCAL_CONFIG));
         let bytes = fs::read(path).ok()?;
         if bytes.len() > 64 * 1024 {
             bevy::log::warn!(
@@ -98,7 +121,10 @@ pub(super) fn selected_packs() -> Option<Vec<PbrPack>> {
             return None;
         }
         match configuration(&bytes, path.parent().unwrap_or(Path::new("."))) {
-            Ok(packs) => packs,
+            Ok(packs) => {
+                tile_size = serde_json::from_slice::<Config>(&bytes).ok()?.max_tile_size;
+                packs
+            }
             Err(error) => {
                 bevy::log::warn!(
                     "{}: {error}; authored Enhanced textures disabled",
@@ -116,12 +142,21 @@ pub(super) fn selected_packs() -> Option<Vec<PbrPack>> {
         bevy::log::warn!("optional Enhanced PBR selection contains no existing pack directory");
         return None;
     }
-    Some(packs)
+    Some((packs, tile_size))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dxr_pbr_resolution_is_bounded_and_validated() {
+        for size in [0, 17, 1024] {
+            let json = format!(r#"{{"packs":[],"max_tile_size":{size}}}"#);
+            assert!(configuration(json.as_bytes(), Path::new(".")).is_err());
+        }
+        assert!(configuration(br#"{"packs":[],"max_tile_size":128}"#, Path::new(".")).is_ok());
+    }
 
     #[test]
     fn environment_roots_pair_colour_and_material_maps() {

@@ -101,7 +101,7 @@ pub(in crate::chunk) fn prepare_chunk_texture_assets(
             gpu_assets._attempted_assets = Some(Arc::clone(assets.assets()));
             *stats = uploaded;
             reload.published(&request);
-            #[cfg(feature = "enhanced")]
+            #[cfg(any(windows, feature = "enhanced"))]
             {
                 gpu_assets.authored_pending = AuthoredUpload::for_assets(
                     &assets,
@@ -114,7 +114,7 @@ pub(in crate::chunk) fn prepare_chunk_texture_assets(
             }
         }
     }
-    #[cfg(feature = "enhanced")]
+    #[cfg(any(windows, feature = "enhanced"))]
     if gpu_assets
         .authored_pending
         .as_ref()
@@ -122,12 +122,12 @@ pub(in crate::chunk) fn prepare_chunk_texture_assets(
     {
         gpu_assets.authored_pending = None;
     }
-    #[cfg(feature = "enhanced")]
+    #[cfg(any(windows, feature = "enhanced"))]
     let authored_only = gpu_assets
         .prepared
         .as_ref()
         .is_some_and(|prepared| same_carrier(prepared.identity, identity));
-    #[cfg(not(feature = "enhanced"))]
+    #[cfg(not(any(windows, feature = "enhanced")))]
     let authored_only = false;
     // Bootstrap may publish without an optional reload transaction.
     if texture_asset_needs_rebuild(gpu_assets.attempted_identity, identity)
@@ -167,7 +167,7 @@ pub(in crate::chunk) fn prepare_chunk_texture_assets(
             &render_queue,
         );
     }
-    #[cfg(feature = "enhanced")]
+    #[cfg(any(windows, feature = "enhanced"))]
     if let Some(pending) = gpu_assets.authored_pending.as_mut() {
         pending.step(&render_queue, authored_upload::FRAME_UPLOAD_BYTES);
         if pending.complete() {
@@ -271,7 +271,7 @@ fn poll_bootstrap_atlas(
     if let Some((prepared, uploaded)) = result {
         gpu_assets.prepared = Some(prepared);
         *stats = uploaded;
-        #[cfg(feature = "enhanced")]
+        #[cfg(any(windows, feature = "enhanced"))]
         {
             gpu_assets.authored_pending = AuthoredUpload::for_assets(
                 assets,
@@ -294,9 +294,9 @@ fn rebuild_bootstrap_atlas(
     render_device: &RenderDevice,
     render_queue: &RenderQueue,
 ) {
-    #[cfg(feature = "enhanced")]
+    #[cfg(any(windows, feature = "enhanced"))]
     let identity = assets.binding_identity();
-    #[cfg(feature = "enhanced")]
+    #[cfg(any(windows, feature = "enhanced"))]
     if gpu_assets
         .prepared
         .as_ref()
@@ -321,7 +321,7 @@ fn rebuild_bootstrap_atlas(
         }
         return;
     }
-    #[cfg(feature = "enhanced")]
+    #[cfg(any(windows, feature = "enhanced"))]
     {
         gpu_assets.authored_pending = None;
     }
@@ -333,7 +333,7 @@ fn rebuild_bootstrap_atlas(
     ) {
         gpu_assets.prepared = Some(prepared);
         *stats = uploaded;
-        #[cfg(feature = "enhanced")]
+        #[cfg(any(windows, feature = "enhanced"))]
         {
             gpu_assets.authored_pending = AuthoredUpload::for_assets(
                 assets,

@@ -176,7 +176,7 @@ impl Report {
             schema: SCHEMA,
             fingerprint: fingerprint(key),
             source: "decoded".to_owned(),
-            tile_size: assets::texture::PBR_TILE_SIZE,
+            tile_size: page_sizes.map_or(assets::texture::PBR_TILE_SIZE, |sizes| sizes[0]),
             page_sizes,
             mapped_texture_refs,
             albedo_layers,

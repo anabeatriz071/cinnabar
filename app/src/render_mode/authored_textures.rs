@@ -1,4 +1,4 @@
-//! Optional authored maps load once off the frame thread, after Enhanced is selected.
+//! Optional authored maps load off the frame thread for the independently admitted renderers.
 
 use std::{
     io,
@@ -54,6 +54,17 @@ impl AuthoredTextureLoading {
         {
             return;
         }
+        self.request(spawn);
+    }
+
+    /// Starts the same decoder for the independently admitted DXR renderer.
+    fn request(
+        &mut self,
+        spawn: impl FnOnce(Arc<RuntimeAssets>, MaterialKeys) -> io::Result<Receiver>,
+    ) {
+        if !matches!(self.loading, Loading::Unrequested) {
+            return;
+        }
         let Some(keys) = self.keys.take() else {
             self.loading = Loading::Complete(None);
             return;
@@ -61,7 +72,7 @@ impl AuthoredTextureLoading {
         self.loading = match spawn(Arc::clone(&self.base), keys) {
             Ok(receiver) => Loading::Pending(Mutex::new(receiver)),
             Err(error) => {
-                warn!(?error, "authored Enhanced texture worker could not start");
+                warn!(?error, "authored terrain texture worker could not start");
                 Loading::Complete(None)
             }
         };
@@ -80,7 +91,7 @@ impl AuthoredTextureLoading {
             Ok(maps) => self.loading = Loading::Complete(maps),
             Err(mpsc::TryRecvError::Empty) => {}
             Err(mpsc::TryRecvError::Disconnected) => {
-                warn!("authored Enhanced texture worker stopped; retained carrier materials");
+                warn!("authored terrain texture worker stopped; retained carrier materials");
                 self.loading = Loading::Complete(None);
             }
         }
@@ -102,7 +113,7 @@ impl AuthoredTextureLoading {
         if let Loading::Complete(Some(maps)) = &self.loading
             && !maps.fits_device_limits(limits)
         {
-            warn!("unsupported authored Enhanced maps; retained carrier materials");
+            warn!("unsupported authored terrain maps; retained carrier materials");
             self.loading = Loading::Complete(None);
         }
     }
@@ -116,7 +127,7 @@ fn spawn(
 ) -> io::Result<Receiver> {
     let (sender, receiver) = mpsc::channel();
     std::thread::Builder::new()
-        .name("Enhanced terrain materials".to_owned())
+        .name("Authored terrain materials".to_owned())
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
             let maps =
@@ -125,7 +136,7 @@ fn spawn(
                         .as_ref()
                         .is_none_or(|limits| maps.fits_device_limits(limits));
                     if !supported {
-                        warn!("unsupported authored Enhanced maps; retained carrier materials");
+                        warn!("unsupported authored terrain maps; retained carrier materials");
                     }
                     supported
                 });
@@ -163,7 +174,18 @@ pub(super) fn update_authored_textures(
     } else {
         RenderMode::Vanilla
     };
+    let video = &settings.user_settings_update().1.video;
+    let dxr = video.dxr_terrain_shadows
+        && video.render_mode == RenderMode::Vanilla
+        && device.as_ref().is_some_and(|device| {
+            device
+                .features()
+                .contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY)
+        });
     let limits = device.as_ref().map(|device| device.limits());
+    if dxr {
+        loading.request(|base, keys| spawn(base, keys, limits.clone()));
+    }
     loading.begin(mode, |base, keys| spawn(base, keys, limits.clone()));
     loading.poll();
     if let Some(limits) = &limits {
@@ -172,12 +194,37 @@ pub(super) fn update_authored_textures(
     if reload.is_some_and(|reload| reload.geometry_pending()) {
         return;
     }
-    apply(&mut textures, loading.selected(mode));
+    let maps = if dxr {
+        match &loading.loading {
+            Loading::Complete(maps) => maps.clone(),
+            _ => None,
+        }
+    } else {
+        loading.selected(mode)
+    };
+    apply(&mut textures, maps);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dxr_authored_worker_is_single_flight_without_enabling_enhanced() {
+        let base = Arc::new(RuntimeAssets::diagnostic());
+        let keys = MaterialKeys::from_entries([(0, "stone")]);
+        let mut loading = AuthoredTextureLoading::new(base, Some(keys));
+        let (send, receive) = mpsc::channel();
+        loading.request(|_, _| Ok(receive));
+        loading.request(|_, _| panic!("a pending DXR decoder must not restart"));
+        let expected = maps();
+        send.send(Some(expected.clone())).unwrap();
+        loading.poll();
+        assert!(
+            matches!(&loading.loading, Loading::Complete(Some(actual)) if Arc::ptr_eq(actual,&expected))
+        );
+        assert!(loading.selected(RenderMode::Vanilla).is_none());
+    }
 
     /// Builds minimal valid authored pages for loader tests.
     fn maps() -> Arc<EnhancedTextureAssets> {

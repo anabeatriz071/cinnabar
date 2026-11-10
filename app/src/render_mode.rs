@@ -33,6 +33,7 @@ use {
 };
 
 pub(crate) mod authored_textures;
+mod dxr_lights;
 mod shader_options;
 mod shader_pack;
 
@@ -209,6 +210,12 @@ impl Plugin for RenderModePlugin {
                 )
                     .chain(),
             );
+        app.add_systems(
+            Update,
+            dxr_lights::publish
+                .after(sync_dxr_terrain_shadows)
+                .after(client_presentation::local_player::LocalPlayerFrameSet::Interaction),
+        );
         shader_pack::configure(app);
     }
 }

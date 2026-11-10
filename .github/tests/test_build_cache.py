@@ -73,6 +73,15 @@ class SourceReuseTests(unittest.TestCase):
         cache.restore_inputs(self.root)
         self.assertTrue(self.build())
 
+    def test_changed_flags_rebuild_with_restored_source_timestamps(self):
+        """An older snapshot cannot hide a changed compiler configuration from Cargo."""
+        self.assertFalse(self.build())
+        cache.verify_inputs(self.root)
+        self.fresh_checkout()
+        cache.restore_inputs(self.root)
+        with patch.dict(os.environ, {"RUSTFLAGS": "--cfg dxr_cache_configuration_changed"}):
+            self.assertFalse(self.build())
+
     def test_checkout_without_restoration_rebuilds(self):
         """Demonstrate the regression that timestamp restoration must prevent."""
         self.assertFalse(self.build())

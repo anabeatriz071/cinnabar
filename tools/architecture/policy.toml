@@ -2406,3 +2406,23 @@ reason = "A door texture suffix in the existing provisional PBR name conversion.
 path = "tools/jsonui-editor/src/figma/convert/button.rs"
 literal = "locked"
 reason = "A button state name in the editor conversion contract, independent of pack asset identifiers."
+
+[[identifier_literal_exceptions]]
+path = "app/src/render_mode/dxr_lights.rs"
+literal = "minecraft:torch"
+reason = "Explicit provisional DXR emitter selection; the dxr_emitter_names_are_pinned_items test checks the facts owner's registry. Emission strength comes from live block facts."
+
+[[identifier_literal_exceptions]]
+path = "app/src/render_mode/dxr_lights.rs"
+literal = "minecraft:lantern"
+reason = "Explicit provisional DXR emitter selection checked against the facts owner's registry by dxr_emitter_names_are_pinned_items; emission comes from live block facts."
+
+[[identifier_literal_exceptions]]
+path = "app/src/render_mode/dxr_lights.rs"
+literal = "minecraft:soul_torch"
+reason = "Explicit provisional DXR emitter selection checked against the facts owner's registry by dxr_emitter_names_are_pinned_items; emission comes from live block facts."
+
+[[identifier_literal_exceptions]]
+path = "app/src/render_mode/dxr_lights.rs"
+literal = "minecraft:soul_lantern"
+reason = "Explicit provisional DXR emitter selection checked against the facts owner's registry by dxr_emitter_names_are_pinned_items; emission comes from live block facts."

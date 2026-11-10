@@ -68,13 +68,22 @@ fn files(root: &Path, result: &mut Vec<PathBuf>) -> Option<()> {
 }
 
 /// Hashes pack contents, decode options and carrier ownership within a byte budget.
+#[cfg(test)]
 pub(super) fn fingerprint(
     packs: &[PbrPack],
     sources: &std::collections::BTreeMap<(String, String), Vec<Source>>,
 ) -> Option<[u8; 32]> {
+    fingerprint_with_size(packs, sources, assets::texture::PBR_TILE_SIZE)
+}
+
+pub(super) fn fingerprint_with_size(
+    packs: &[PbrPack],
+    sources: &std::collections::BTreeMap<(String, String), Vec<Source>>,
+    tile_size: u32,
+) -> Option<[u8; 32]> {
     let mut digest = Sha256::new();
     digest.update(MAGIC);
-    digest.update(assets::texture::PBR_TILE_SIZE.to_le_bytes());
+    digest.update(tile_size.to_le_bytes());
     digest.update(LOW_PBR_TILE_SIZE.to_le_bytes());
     digest.update(assets::texture::PBR_HEIGHT_SCALE.to_bits().to_le_bytes());
     for flag in [

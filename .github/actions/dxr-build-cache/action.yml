@@ -42,7 +42,11 @@ runs:
           ~/.cargo/git
           target
         key: ${{ steps.keys.outputs.key }}
-        restore-keys: ${{ steps.keys.outputs.prefix }}-
+        # Cargo fingerprints still validate compiler/features/profile changes after restoration.
+        # The broader fallback preserves project outputs when only this workflow's test selection changes.
+        restore-keys: |
+          ${{ steps.keys.outputs.prefix }}-
+          dxr-full-v1-${{ runner.os }}-${{ inputs.lane }}-
     - name: Bootstrap from the existing dependency cache
       if: inputs.phase == 'restore' && steps.restore.outputs.cache-matched-key == ''
       uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2

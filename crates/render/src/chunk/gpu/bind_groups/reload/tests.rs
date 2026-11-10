@@ -4,7 +4,7 @@ use bevy::ecs::system::RunSystemOnce;
 use bevy::render::render_resource::{TextureId, TextureViewId};
 use render_scene::{ChunkRenderQueue, ChunkUploadAcknowledgements, ChunkUploadPriority};
 
-#[cfg(feature = "enhanced")]
+#[cfg(any(windows, feature = "enhanced"))]
 mod authored_streaming;
 
 /// The physical atlas resources selected by terrain draw preparation.
@@ -126,7 +126,7 @@ fn published(app: &App) -> (ChunkTextureBindingIdentity, BufferId, BufferId) {
 }
 
 /// Authored changes must publish and resume streaming while old terrain remains allocated.
-#[cfg(feature = "enhanced")]
+#[cfg(any(windows, feature = "enhanced"))]
 #[test]
 fn authored_updates_preserve_resident_and_retired_terrain_and_resume_uploads() {
     let (mut app, instances) = publication_app();

@@ -178,14 +178,23 @@ fn fallback(size: u32) -> PbrMipLayer {
 }
 
 /// Resolves material aliases into sparse authored pages and coverage records.
+#[cfg(test)]
 fn load(
     groups: BTreeMap<(String, String), Vec<Source>>,
     packs: &[PbrPack],
 ) -> (Option<cache::Payload>, Vec<audit::Alias>) {
+    load_with_size(groups, packs, assets::texture::PBR_TILE_SIZE)
+}
+
+fn load_with_size(
+    groups: BTreeMap<(String, String), Vec<Source>>,
+    packs: &[PbrPack],
+    tile_size: u32,
+) -> (Option<cache::Payload>, Vec<audit::Alias>) {
     let pages = || {
         [
-            Page::new(assets::texture::PBR_TILE_SIZE),
-            Page::new(LOW_PBR_TILE_SIZE),
+            Page::new(tile_size),
+            Page::new(LOW_PBR_TILE_SIZE.min(tile_size)),
         ]
     };
     let mut colors = pages();
@@ -296,12 +305,13 @@ pub(crate) fn load_optional_enhanced_textures(
     runtime: &RuntimeAssets,
     keys: &MaterialKeys,
 ) -> Option<Arc<render_scene::EnhancedTextureAssets>> {
-    let packs: Vec<_> = config::selected_packs()?
+    let (selected, tile_size) = config::selected_packs()?;
+    let packs: Vec<_> = selected
         .into_iter()
         .map(|pack| pack.with_terrain_aliases(keys.aliases()))
         .collect();
     let groups = sources(runtime, keys);
-    let fingerprint = cache::fingerprint(&packs, &groups);
+    let fingerprint = cache::fingerprint_with_size(&packs, &groups, tile_size);
     if let Some(key) = fingerprint.as_ref()
         && let Some(mut report) = audit::load(key)
         && let Some(cached) = cache::load(key)
@@ -312,7 +322,7 @@ pub(crate) fn load_optional_enhanced_textures(
             return Some(Arc::new(cached));
         }
     }
-    let (payload, aliases) = load(groups, &packs);
+    let (payload, aliases) = load_with_size(groups, &packs, tile_size);
     let report = audit::Report::decoded(
         &fingerprint.unwrap_or([0; 32]),
         aliases,

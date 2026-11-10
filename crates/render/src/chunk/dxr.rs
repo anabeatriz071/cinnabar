@@ -23,13 +23,14 @@ use wgpu::util::DeviceExt;
 mod cache;
 mod geometry;
 mod pipeline;
+mod surfaces;
 use pipeline::{Frame, SUN_ANGULAR_RADIUS, create_pipeline};
 
 use cache::{MAX_SECTIONS, invalid_instance_mask, retain_caster, select_casters};
 const BUILDS_PER_FRAME: usize = 1;
 const BUSY_BUILD_INTERVAL: u8 = 8;
 const CASTER_RADIUS: f32 = 72.0;
-const RECEIVER_RADIUS: f32 = 32.0;
+const RECEIVER_RADIUS: f32 = render_scene::terrain_shadows::DXR_RECEIVER_RADIUS;
 const RAY_LENGTH: f32 = CASTER_RADIUS - RECEIVER_RADIUS;
 
 #[derive(Resource, Default)]
@@ -37,6 +38,10 @@ struct Shadows {
     sections: HashMap<Entity, Section>,
     ordered: Vec<Entity>,
     scene: Option<wgpu::Tlas>,
+    surfaces: Option<surfaces::SceneSurfaces>,
+    surface_quads: Option<Buffer>,
+    surface_allocation_failed: bool,
+    surface_pipelines: Mutex<HashMap<(wgpu::TextureFormat, u32), surfaces::SurfacePipelines>>,
     view: Option<Entity>,
     pipelines: Mutex<HashMap<(wgpu::TextureFormat, u32), wgpu::RenderPipeline>>,
     pending: Arc<AtomicBool>,
@@ -47,6 +52,7 @@ struct Shadows {
 }
 
 struct Section {
+    slot: u32,
     mesh: Arc<[PackedQuad]>,
     layout: CubeQuadLayout,
     origin: [i32; 3],
@@ -59,6 +65,12 @@ struct Preparation<'w> {
     uploads: Res<'w, ChunkGpuUploadStats>,
     preference: Res<'w, render_scene::terrain_shadows::DxrTerrainShadows>,
     panorama: Option<Res<'w, render_scene::PanoramaScene>>,
+}
+
+#[derive(bevy::ecs::schedule::SystemSet, Debug, Clone, Copy, Hash, PartialEq, Eq)]
+enum DxrPass {
+    Sunlight,
+    Materials,
 }
 
 /// Registers a separate pass after opaque terrain, including late GPU-culled draws.
@@ -87,6 +99,7 @@ pub(super) fn install(app: &mut App) {
                     "DXR terrain sunlight",
                 )
                 .in_set(Core3dSystems::MainPass)
+                .in_set(DxrPass::Sunlight)
                 .after(crate::scene_target::ScenePass::Opaque)
                 .after(super::GpuCullLateLabel)
                 .after(crate::entity_shadow_render::EntityShadowLabel)
@@ -97,6 +110,20 @@ pub(super) fn install(app: &mut App) {
     {
         return;
     }
+    #[cfg(any(windows, feature = "enhanced"))]
+    render.world_mut().schedule_scope(Core3d, |_, schedule| {
+        schedule.add_systems(
+            crate::gpu_timing::profiled(
+                surfaces::composite,
+                Some(render_scene::RuntimeStage::GpuShadows),
+                "DXR PBR and local lights",
+            )
+            .in_set(Core3dSystems::MainPass)
+            .in_set(DxrPass::Materials)
+            .after(DxrPass::Sunlight)
+            .before(crate::scene_target::ScenePass::Transparent),
+        );
+    });
     install_preparation(render);
     app.add_systems(Last, super::admit_depth_sampling);
     app.insert_resource(render_scene::terrain_shadows::DxrTerrainShadowsSupported(
@@ -155,12 +182,15 @@ fn prepare(
         );
     }
     if !control.preference.0 {
+        shadows.surface_quads = None;
+        shadows.surface_allocation_failed = false;
         shadows.build_budget = default();
         shadows.budget_wait_reported = false;
         shadows.composite_reported.store(false, Ordering::Relaxed);
         shadows.sections.clear();
         shadows.ordered.clear();
         shadows.scene = None;
+        shadows.surfaces = None;
         shadows.view = None;
         return;
     }
@@ -186,6 +216,7 @@ fn prepare(
         shadows.sections.clear();
         shadows.ordered.clear();
         shadows.scene = None;
+        shadows.surfaces = None;
         return;
     };
     let eye = view.world_from_view.translation();
@@ -203,8 +234,9 @@ fn prepare(
                 .then_some((entity, (distance, chunk, uploaded)))
         })
         .collect();
+    let material_buffer = shadows.surface_quads.clone();
     shadows.sections.retain(|entity, section| {
-        candidates.get(entity).is_some_and(|(_, chunk, _)| {
+        candidates.get(entity).is_some_and(|(_, chunk, uploaded)| {
             let valid = section.origin == chunk.origin
                 && opaque_geometry_matches(
                     &section.mesh,
@@ -212,7 +244,14 @@ fn prepare(
                     &chunk.cube_quads,
                     chunk.cube_layout,
                 );
-            if valid {
+            if valid && *uploaded {
+                if section.mesh != chunk.cube_quads {
+                    section.mesh = chunk.cube_quads.clone();
+                    section.layout = chunk.cube_layout;
+                    if let Some(buffer) = &material_buffer {
+                        surfaces::SceneSurfaces::write_section(&queue, buffer, section);
+                    }
+                }
                 // Refresh identity after equivalent mesh publications without rebuilding its BLAS.
                 section.mesh = chunk.cube_quads.clone();
                 section.layout = chunk.cube_layout;
@@ -253,6 +292,7 @@ fn prepare(
     }
     let gpu = device.wgpu_device();
     let mut encoder = None;
+    let mut inserted = Vec::new();
     for entity in desired
         .iter()
         .copied()
@@ -260,6 +300,7 @@ fn prepare(
         .take(build_limit)
         .collect::<Vec<_>>()
     {
+        inserted.push(entity);
         let chunk = candidates[&entity].1;
         let encoder =
             encoder.get_or_insert_with(|| gpu.create_command_encoder(&Default::default()));
@@ -274,9 +315,18 @@ fn prepare(
                 .expect("a new desired caster replaces one resident outside the desired set");
             shadows.sections.remove(&victim);
         }
+        let slot = (0..MAX_SECTIONS as u32)
+            .find(|slot| {
+                shadows
+                    .sections
+                    .values()
+                    .all(|section| section.slot != *slot)
+            })
+            .expect("a bounded caster replacement frees one material slot");
         shadows.sections.insert(
             entity,
             Section {
+                slot,
                 mesh: chunk.cube_quads.clone(),
                 layout: chunk.cube_layout,
                 origin: chunk.origin,
@@ -284,11 +334,22 @@ fn prepare(
             },
         );
     }
+    if shadows.surface_quads.is_none() && !shadows.surface_allocation_failed {
+        shadows.surface_quads = surfaces::SceneSurfaces::quad_buffer(&device);
+        shadows.surface_allocation_failed = shadows.surface_quads.is_none();
+    }
+    if let Some(buffer) = shadows.surface_quads.as_ref() {
+        // Newly inserted slots are the only full geometry transfer in an ordinary build frame.
+        for entity in inserted {
+            surfaces::SceneSurfaces::write_section(&queue, buffer, &shadows.sections[&entity]);
+        }
+    }
     let mut ordered: Vec<_> = shadows.sections.keys().copied().collect();
     ordered.sort_unstable();
     if ordered.is_empty() {
         shadows.ordered.clear();
         shadows.scene = None;
+        shadows.surfaces = None;
         return;
     }
     if encoder.is_none() && ordered == shadows.ordered && shadows.scene.is_some() {
@@ -318,6 +379,9 @@ fn prepare(
     let pending = shadows.pending.clone();
     queue.on_submitted_work_done(move || pending.store(false, Ordering::Release));
     shadows.ordered = ordered;
+    shadows.surfaces = shadows.surface_quads.as_ref().map(|buffer| {
+        surfaces::SceneSurfaces::new(gpu, &shadows.ordered, &shadows.sections, buffer)
+    });
     shadows.scene = Some(scene);
 }
 

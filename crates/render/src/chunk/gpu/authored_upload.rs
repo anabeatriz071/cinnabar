@@ -174,27 +174,34 @@ impl AuthoredUpload {
             .flat_map(|array| array.mips.iter())
             .map(|mip| mip.rgba8.len() as u64)
             .sum();
-        let textures = std::array::from_fn(|index| {
-            let array = arrays[index];
-            device.create_texture(&TextureDescriptor {
-                label: Some("staged authored Enhanced terrain"),
-                size: Extent3d {
-                    width: array.mips[0].size,
-                    height: array.mips[0].size,
-                    depth_or_array_layers: array.layers,
-                },
-                mip_level_count: array.mips.len() as u32,
-                sample_count: 1,
-                dimension: TextureDimension::D2,
-                format: if index < 2 {
-                    TextureFormat::Rgba8UnormSrgb
-                } else {
-                    TextureFormat::Rgba8Unorm
-                },
-                usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-                view_formats: &[],
+        let textures: [Texture; 6] = (0..6)
+            .map(|index| {
+                let array = arrays[index];
+                let bytes = array.mips.iter().map(|mip| mip.rgba8.len() as u64).sum();
+                crate::gpu_allocation::checked(device, "staged authored PBR terrain", bytes, || {
+                    device.create_texture(&TextureDescriptor {
+                        label: Some("staged authored PBR terrain"),
+                        size: Extent3d {
+                            width: array.mips[0].size,
+                            height: array.mips[0].size,
+                            depth_or_array_layers: array.layers,
+                        },
+                        mip_level_count: array.mips.len() as u32,
+                        sample_count: 1,
+                        dimension: TextureDimension::D2,
+                        format: if index < 2 {
+                            TextureFormat::Rgba8UnormSrgb
+                        } else {
+                            TextureFormat::Rgba8Unorm
+                        },
+                        usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+                        view_formats: &[],
+                    })
+                })
             })
-        });
+            .collect::<Option<Vec<_>>>()?
+            .try_into()
+            .ok()?;
         let views = std::array::from_fn(|index| {
             textures[index].create_view(&TextureViewDescriptor {
                 label: Some("staged authored Enhanced terrain view"),

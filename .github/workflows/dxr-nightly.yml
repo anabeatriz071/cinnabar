@@ -55,9 +55,9 @@ jobs:
           # One feature graph avoids recompiling dependencies for each package separately.
           # The release job compiles the application; these selected targets compile its regressions.
           # Hosted GPU probes may report a named missing fixture, which is not hardware acceptance.
-          cargo nextest run --locked -p launcher -p oreui -p client-ui -p render \
+          cargo nextest run --locked -p launcher -p oreui -p client-ui -p render -p cinnabar -p pack-compiler \
             --lib --test dx12_terrain_shadow \
-            -E 'test(dxr) | test(gui_models::fire::tests) | binary(dx12_terrain_shadow)' \
+            -E 'test(dxr) | test(pbr::tests) | test(authored_upload) | test(authored_streaming) | test(gui_models::fire::tests) | binary(dx12_terrain_shadow)' \
             --no-fail-fast --success-output immediate
 
       - name: Save test build cache

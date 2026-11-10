@@ -36,9 +36,9 @@ impl Content<'_, '_> {
         .unwrap_or_default();
         let description = if id == SettingId::DxrTerrainShadows {
             if self.view.settings_options.dxr_shadows_supported() {
-                "Experimental sunlight shadows for opaque blocks. Applies immediately; turn off here to restore normal rendering. Inactive with shader packs. Full RTX lighting and materials are not supported yet.".to_owned()
+                "Experimental sunlight shadows, PBR materials, metal reflections and nearby placed/held torch and lantern lights. Applies immediately. PBR maps use the configured resource pack. Inactive with shader packs; full path tracing is not implemented.".to_owned()
             } else {
-                "Unavailable on this device. Requires Windows, DirectX 12, the bundled DXC and a GPU with DXR inline ray queries (Tier 1.1). Full RTX lighting and materials are not supported yet.".to_owned()
+                "Unavailable on this device. Requires Windows, DirectX 12, the bundled DXC and a GPU with DXR inline ray queries (Tier 1.1). Path tracing is not implemented.".to_owned()
             }
         } else if id == SettingId::ChunkOcclusionCulling {
             "Skip terrain hidden behind other blocks. Visible terrain stays available.".to_owned()

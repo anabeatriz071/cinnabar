@@ -2,11 +2,11 @@ use super::resource_geometry::PreparedResourceGeometry;
 use super::texture_upload::build_carrier_texture_assets;
 #[cfg(test)]
 use super::texture_upload::build_chunk_texture_assets;
-#[cfg(feature = "enhanced")]
+#[cfg(any(windows, feature = "enhanced"))]
 use super::{authored_upload, authored_upload::AuthoredUpload};
-#[cfg(feature = "enhanced")]
+#[cfg(any(windows, feature = "enhanced"))]
 use render_scene::EnhancedTextureAssets;
-#[cfg(all(test, feature = "enhanced"))]
+#[cfg(all(test, any(windows, feature = "enhanced")))]
 mod carrier_tests;
 
 mod reload;
@@ -213,8 +213,8 @@ pub(in crate::chunk) fn prepare_chunk_biome_tints(
 #[derive(Clone)]
 pub(in crate::chunk) struct PreparedChunkTextureAssets {
     /// Retains the authored source represented by the current GPU bindings.
-    #[cfg(feature = "enhanced")]
-    pub(super) authored_source: Option<Arc<EnhancedTextureAssets>>,
+    #[cfg(any(windows, feature = "enhanced"))]
+    pub(in crate::chunk) authored_source: Option<Arc<EnhancedTextureAssets>>,
     pub(in crate::chunk) identity: ChunkTextureBindingIdentity,
     pub(in crate::chunk) material_buffer: Buffer,
     pub(in crate::chunk) animation_buffer: Buffer,
@@ -223,19 +223,19 @@ pub(in crate::chunk) struct PreparedChunkTextureAssets {
     pub(in crate::chunk) _textures: [Texture; assets::MAX_TEXTURE_PAGES],
     pub(in crate::chunk) views: [TextureView; assets::MAX_TEXTURE_PAGES],
     /// Neutral normal and MER pages that stand in for detached authored maps.
-    #[cfg(feature = "enhanced")]
+    #[cfg(any(windows, feature = "enhanced"))]
     pub(in crate::chunk) _pbr_textures: [Texture; 4],
-    #[cfg(feature = "enhanced")]
+    #[cfg(any(windows, feature = "enhanced"))]
     pub(in crate::chunk) pbr_views: [TextureView; 4],
-    #[cfg(feature = "enhanced")]
+    #[cfg(any(windows, feature = "enhanced"))]
     pub(in crate::chunk) _enhanced_textures: [Texture; 6],
-    #[cfg(feature = "enhanced")]
+    #[cfg(any(windows, feature = "enhanced"))]
     pub(in crate::chunk) enhanced_views: [TextureView; 6],
-    #[cfg(feature = "enhanced")]
+    #[cfg(any(windows, feature = "enhanced"))]
     pub(in crate::chunk) enhanced_texture_refs: Buffer,
-    #[cfg(feature = "enhanced")]
+    #[cfg(any(windows, feature = "enhanced"))]
     pub(in crate::chunk) authored_bytes: u64,
-    #[cfg(feature = "enhanced")]
+    #[cfg(any(windows, feature = "enhanced"))]
     pub(in crate::chunk) authored_upload_bytes: u64,
     pub(in crate::chunk) native_leaf_views: [TextureView; assets::MAX_TEXTURE_PAGES],
     pub(in crate::chunk) sampler: Sampler,
@@ -293,7 +293,7 @@ pub(in crate::chunk) struct ChunkGpuTextureAssets {
     pending: Option<PendingTextures>,
     staged: Option<StagedTextures>,
     bootstrap: Option<reload::BootstrapTextures>,
-    #[cfg(feature = "enhanced")]
+    #[cfg(any(windows, feature = "enhanced"))]
     authored_pending: Option<AuthoredUpload>,
 }
 
