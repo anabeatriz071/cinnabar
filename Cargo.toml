@@ -63,6 +63,7 @@ members = [
     "crates/shaderpack-worker",
     "crates/zip-footer",
     "crates/render",
+    "crates/dxr-pipeline",
     "crates/render-api",
     "crates/cosmetics",
     "crates/test-alloc",

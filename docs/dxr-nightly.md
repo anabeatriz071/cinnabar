@@ -90,11 +90,27 @@ Cargo fingerprints preserve unchanged crates while rebuilding changed inputs.
 
 ## RT pipeline migration status
 
-The RT pipeline migration is not implemented. The pinned wgpu revision
+The in-game RT pipeline migration is incomplete. The pinned wgpu revision
 `a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5` has no public pipeline creation or
 ray-dispatch API. Its `wgpu-hal/src/dx12/device.rs` pipeline creation/group-data
 functions and `wgpu-hal/src/dx12/command.rs` ray-pass/dispatch functions are
 unimplemented. Calling those HAL entry points would panic.
+
+An additive `dxr-pipeline` crate now implements native DX12 state objects, triangle
+hit groups, optional any-hit shaders, shader identifier tables, checked dispatch
+limits and native `DispatchRays` recording. It accepts the caller's native device
+and root signature without changing wgpu or Cinnabar's existing API. CPU layout
+checks and a Windows cross-compile pass; native GPU execution remains unverified
+until the synthetic marker-dispatch/readback test runs on DXR hardware. The
+backend-only Windows workflow compiles the synthetic DXIL fixture and tests this
+small crate; it does not build an installer or publish a release.
+
+The terrain integration still needs safe command-list access at a synchronized
+wgpu render boundary, explicit resource transitions and retained resource lifetimes.
+The pinned DX12 HAL exposes its device but keeps its command list private. Do not
+work around that by reinterpreting private structs or inserting unsynchronized
+native queue submissions. An additive upstream HAL accessor or an explicitly
+synchronized submission boundary is required before switching world passes.
 
 The existing renderer still uses inline ray queries. Both queries and RT pipelines
 can implement path tracing; neither supplies light transport automatically.
@@ -109,6 +125,6 @@ accumulation/denoising, and add shadowed volumetric integration for light shafts
 Existing materials and placed/held lights are prototypes, not acceptance evidence
 for this replacement. Full GI, water transport and DLSS remain separate work.
 
-Builds are now manual while this migration is pending. The workflow creates a new
+Installer builds are now manual while this migration is pending. The workflow creates a new
 `dxr-preview-<run>-<attempt>-<commit>` prerelease and never moves or overwrites
 `nightly-dxr`. Starting a build is deferred until the requested renderer is ready.

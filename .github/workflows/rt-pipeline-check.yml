@@ -1,0 +1,35 @@
+name: RT pipeline backend checks
+on:
+  push:
+    branches: [dxr-terrain-shadows]
+    paths:
+      - 'crates/dxr-pipeline/**'
+      - 'packaging/windows/compile-rt-smoke.ps1'
+      - '.github/workflows/rt-pipeline-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    name: Validate additive native DX12 backend
+    runs-on: windows-2025
+    timeout-minutes: 15
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_BUILD_DIR: '{workspace-root}/target'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a
+        with:
+          shared-key: native-dxr-backend
+      - name: Compile the hash-pinned DXIL fixture
+        shell: pwsh
+        run: ./packaging/windows/compile-rt-smoke.ps1
+      - name: Check backend formatting
+        run: cargo fmt --check -p dxr-pipeline
+      - name: Test native pipeline and shader tables
+        # A named missing GPU fixture is not a dispatch pass or visual acceptance.
+        run: cargo test --locked -p dxr-pipeline -- --nocapture

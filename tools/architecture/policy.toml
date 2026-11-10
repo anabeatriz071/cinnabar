@@ -2431,3 +2431,9 @@ reason = "Explicit provisional DXR emitter selection checked against the facts o
 path = "crates/pack-compiler/src/pbr.rs"
 literal = "bedrock"
 reason = "Public PBR configuration format spelling, not an asset identifier; Bedrock texture sets declare their channels in texture_set metadata."
+
+[[crates]]
+name = "dxr-pipeline"
+path = "crates/dxr-pipeline"
+allowed_dependencies = []
+forbidden_dependencies = ["bevy", "wgpu", "protocol", "assets"]
