@@ -97,6 +97,8 @@ pub(crate) mod blocks;
 mod bounds;
 mod constants;
 mod draw;
+#[cfg(windows)]
+mod dxr;
 #[cfg(feature = "enhanced")]
 pub(crate) mod enhanced;
 mod extract;

@@ -234,6 +234,8 @@ impl Plugin for ChunkRenderPlugin {
             render_app.insert_resource(recovery);
         }
         gpu_cull::install(app);
+        #[cfg(windows)]
+        super::dxr::install(app);
     }
 }
 

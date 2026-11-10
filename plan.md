@@ -2252,6 +2252,10 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   Diagnostics or bounded fixtures do not establish safe general gameplay use.
   Its MSAA nametag composite blends against resolved scene colour, so labels partly
   occluded by world silhouettes get a dark edge fringe; per-sample composition is incomplete.
+- The Windows DX12 sunlight prototype (`CINNABAR_DXR_SHADOWS=1`) traces against nearby resident opaque cube
+  terrain and refreshes its acceleration structures on mesh changes. The headless probe
+  checks ray queries and block removal. In-game acceptance, non-cube and cutout casters,
+  Bedrock RTX materials and path tracing remain incomplete.
 - Experimental Java shader packs (Iris/OptiFine format) are built into every client channel.
   Shaders start Off. Terrain expansion currently needs nine compute storage buffers:
   six packed-chunk sources plus three job, vertex-output and atlas-remap buffers.

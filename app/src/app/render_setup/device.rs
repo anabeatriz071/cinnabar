@@ -96,6 +96,18 @@ fn device_requirements(
     if let Some(constrained) = &settings.constrained_limits {
         limits = limits.or_worse_values_from(constrained);
     }
+    if render::device_settings::dxr_terrain_shadows_requested()
+        && adapter.get_info().backend == wgpu::Backend::Dx12
+        && adapter
+            .features()
+            .contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY)
+        && !settings
+            .disabled_features
+            .is_some_and(|disabled| disabled.contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY))
+    {
+        features |= wgpu::Features::EXPERIMENTAL_RAY_QUERY;
+        limits = limits.using_minimum_supported_acceleration_structure_values();
+    }
     (features, limits)
 }
 
