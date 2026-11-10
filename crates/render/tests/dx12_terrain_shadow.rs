@@ -91,6 +91,26 @@ fn dx12_terrain_shadow_updates_after_removal() {
         );
     }
 
+    // A finite sun produces partial coverage at the block edge without blurring lit neighbors.
+    for samples in [1, 4] {
+        let edge = composite_pixel(&device, &queue, &scene, samples, 1.0, [0; 4]);
+        assert!(
+            edge[0] > 188 && edge[0] < 255,
+            "partial sun coverage: {edge:?}"
+        );
+        assert_eq!(edge[0], edge[1]);
+        assert_eq!(edge[1], edge[2]);
+        assert_eq!(
+            composite_pixel(&device, &queue, &scene, samples, 1.15, [0; 4]),
+            [255; 4]
+        );
+        assert_eq!(
+            composite_surface(&device, &queue, &scene, samples, 0.15, [0; 4], -2.0),
+            [255; 4],
+            "a face turned away from the sun keeps its existing ambient lighting"
+        );
+    }
+
     // The submitted TLAS still contains both blocks. Withdrawing one instance through the
     // frame mask removes only its shadow, without waiting for a replacement GPU build.
     for samples in [1, 4] {
@@ -125,6 +145,27 @@ fn composite_pixel(
     samples: u32,
     ground_x: f32,
     invalid_instances: [u32; 4],
+) -> [u8; 4] {
+    composite_surface(
+        device,
+        queue,
+        scene,
+        samples,
+        ground_x,
+        invalid_instances,
+        2.0,
+    )
+}
+
+/// Varies the visible side of the receiver plane while keeping the occluding scene fixed.
+fn composite_surface(
+    device: &Device,
+    queue: &Queue,
+    scene: &Tlas,
+    samples: u32,
+    ground_x: f32,
+    invalid_instances: [u32; 4],
+    eye_y: f32,
 ) -> [u8; 4] {
     use wgpu::{
         Color, Extent3d, LoadOp, Operations, RenderPassColorAttachment,
@@ -168,14 +209,14 @@ fn composite_pixel(
     let frame = pipeline::Frame {
         world_from_clip: [
             [0.02, 0.0, 0.0, 0.0],
-            [0.0, 0.02, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [ground_x, 0.0, -0.15, 1.0],
+            [0.0, 0.0, 0.02, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [ground_x, -0.5, 0.35, 1.0],
         ],
-        eye_radius: [ground_x, -2.0, 0.35, 32.0],
-        sun_strength: [0.24253562, 0.9701425, 0.0, 0.5],
+        eye_radius: [ground_x, eye_y, 0.35, 32.0],
+        sun_strength: [0.0, 1.0, 0.0, 0.5],
         viewport: [0.0, 0.0, 1.0, 1.0],
-        ray_length: [32.0, 0.0, 0.0, 0.0],
+        ray_length: [32.0, pipeline::SUN_ANGULAR_RADIUS, 0.0, 0.0],
         invalid_instances,
     };
     let uniform = device.create_buffer_init(&BufferInitDescriptor {

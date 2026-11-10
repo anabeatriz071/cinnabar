@@ -1,3 +1,6 @@
+/// Provisional finite-sun radius for stable, bounded soft-shadow sampling (radians).
+pub(super) const SUN_ANGULAR_RADIUS: f32 = 0.0087;
+
 /// Uses the scene's existing color and sample count, with a read-only depth input.
 pub(super) fn create_pipeline(
     gpu: &wgpu::Device,

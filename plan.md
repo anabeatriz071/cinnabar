@@ -2253,20 +2253,22 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   Diagnostics or bounded fixtures do not establish safe general gameplay use.
   Its MSAA nametag composite blends against resolved scene colour, so labels partly
   occluded by world silhouettes get a dark edge fringe; per-sample composition is incomplete.
-- Experimental Windows DX12 sunlight shadows are controlled by the persisted Video toggle
-  (Off by default), trace nearby resident opaque cube terrain, and mask edited or unloaded
-  instances individually while retaining the submitted scene during replacement builds.
-  Equivalent opaque geometry reuses its BLAS; distance hysteresis stabilizes caster selection
-  and surface-normal ray offsets replace view-direction offsets. Continued terrain uploads
-  admit one shadow build every eight eligible frames, preventing indefinite starvation; arena growth still suspends builds, and only
-  one shadow submission stays in flight. The headless probe checks ray queries and
-  block removal; the earlier prototype slowdown and stalled terrain have not yet been
-  reproduced on this fork. An RTX 5060 log confirms DX12 ray-query support and a large
-  terrain backlog. User screenshots confirm partial shadows with movement-related popping;
-  visual acceptance of the stability changes remains pending. Fresh in-game removal,
-  chunk streaming and RTX 5060 performance
-  acceptance, non-cube and cutout casters, Bedrock RTX materials and path tracing remain
-  incomplete. See `docs/dxr-nightly.md` for test-build scope and the acceptance scenario.
+- Experimental Windows DX12 sunlight shadows use a persisted Video toggle (Off by
+  default) and nearby resident opaque cube terrain. Edited or unloaded instances are
+  masked individually while replacement builds retain the submitted scene. Equivalent
+  opaque geometry reuses its BLAS; distance hysteresis and surface-normal ray offsets
+  stabilize movement. Fixed finite-sun disk probes soften edges using two rays per
+  shaded sample and up to four on mixed coverage. Sun-facing attenuation follows the
+  receiver normal and retains at least 60% of scene colour; this approximate composite
+  does not supply indirect lighting or denoising. Continued uploads admit one shadow
+  build every eight eligible frames; arena growth suspends builds, and only one shadow
+  submission stays in flight. RTX 5060 user feedback confirms activation and that the
+  stability change stopped disappearing shadows. Softness, direct-light compositing,
+  in-game block removal, streaming and GPU performance still require acceptance.
+  The headless probe covers occlusion, selective removal and partial sun coverage;
+  a missing GPU fixture does not establish hardware acceptance. Non-cube and cutout
+  casters, Bedrock RTX materials and path tracing remain incomplete. See
+  `docs/dxr-nightly.md` for scope and the acceptance scenario.
 - Experimental Java shader packs (Iris/OptiFine format) are built into every client channel.
   Shaders start Off. Terrain expansion currently needs nine compute storage buffers:
   six packed-chunk sources plus three job, vertex-output and atlas-remap buffers.

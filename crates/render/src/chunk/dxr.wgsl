@@ -20,6 +20,40 @@ fn vertex(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
     return vec4(corner * 4.0 - vec2(1.0), 0.0, 1.0);
 }
 
+// Disk samples use a fixed world-space basis, so camera motion does not rotate the pattern.
+fn occlusion(origin: vec3<f32>, direction: vec3<f32>) -> f32 {
+    let filtering = any(frame.invalid_instances != vec4<u32>(0u));
+    let flags = RAY_FLAG_TERMINATE_ON_FIRST_HIT | select(0u, RAY_FLAG_FORCE_NO_OPAQUE, filtering);
+    var query: ray_query;
+    rayQueryInitialize(&query, terrain,
+        RayDesc(flags, 0xffu, 0.005, frame.ray_length.x, origin, direction));
+    while rayQueryProceed(&query) {
+        let candidate = rayQueryGetCandidateIntersection(&query);
+        let instance = candidate.instance_custom_data;
+        if (frame.invalid_instances[instance / 32u] & (1u << (instance % 32u))) == 0u {
+            rayQueryConfirmIntersection(&query);
+        }
+    }
+    return select(0.0, 1.0,
+        rayQueryGetCommittedIntersection(&query).kind != RAY_QUERY_INTERSECTION_NONE);
+}
+
+// Two opposing probes cover fully lit/shaded regions; mixed edges use the other diagonal too.
+fn sun_occlusion(origin: vec3<f32>, sun: vec3<f32>) -> f32 {
+    let axis = select(vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), abs(sun.y) > 0.99);
+    let tangent = normalize(cross(sun, axis));
+    let bitangent = cross(sun, tangent);
+    let diagonal = (tangent + bitangent) * (frame.ray_length.y * 0.5);
+    let a = occlusion(origin, normalize(sun + diagonal));
+    let b = occlusion(origin, normalize(sun - diagonal));
+    if a == b {
+        return a;
+    }
+    let other = (tangent - bitangent) * (frame.ray_length.y * 0.5);
+    return (a + b + occlusion(origin, normalize(sun + other))
+        + occlusion(origin, normalize(sun - other))) * 0.25;
+}
+
 fn shadow(pixel: vec2<f32>, depth: f32) -> vec4<f32> {
     let uv = (pixel - frame.viewport.xy) / frame.viewport.zw;
     let ndc = vec2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
@@ -39,26 +73,15 @@ fn shadow(pixel: vec2<f32>, depth: f32) -> vec4<f32> {
     }
     // A surface-normal offset stays on the same side when the camera changes direction.
     let origin = world + normal * 0.015;
-    let filtering = any(frame.invalid_instances != vec4<u32>(0u));
-    let flags = RAY_FLAG_TERMINATE_ON_FIRST_HIT | select(0u, RAY_FLAG_FORCE_NO_OPAQUE, filtering);
-    var query: ray_query;
-    rayQueryInitialize(
-        &query, terrain,
-        RayDesc(flags, 0xffu, 0.005, frame.ray_length.x,
-            origin, frame.sun_strength.xyz),
-    );
-    // Unchanged scenes use opaque hardware traversal. While rebuilding, reject only
-    // withdrawn instances and keep every other caster in the previous scene visible.
-    while rayQueryProceed(&query) {
-        let candidate = rayQueryGetCandidateIntersection(&query);
-        let instance = candidate.instance_custom_data;
-        if (frame.invalid_instances[instance / 32u] & (1u << (instance % 32u))) == 0u {
-            rayQueryConfirmIntersection(&query);
-        }
+    let sun = normalize(frame.sun_strength.xyz);
+    // Vanilla's lightmap already shades back-facing surfaces; avoid darkening them again.
+    let incidence = max(dot(normal, sun), 0.0);
+    if incidence <= 0.0 {
+        return vec4(0.0);
     }
-    let hit = rayQueryGetCommittedIntersection(&query);
+    let coverage = sun_occlusion(origin, sun);
     let fade = 1.0 - smoothstep(frame.eye_radius.w * 0.75, frame.eye_radius.w, distance);
-    let alpha = select(0.0, frame.sun_strength.w * fade, hit.kind != RAY_QUERY_INTERSECTION_NONE);
+    let alpha = frame.sun_strength.w * incidence * coverage * fade;
     return vec4(0.0, 0.0, 0.0, alpha);
 }
 

@@ -23,7 +23,7 @@ use wgpu::util::DeviceExt;
 mod cache;
 mod geometry;
 mod pipeline;
-use pipeline::{Frame, create_pipeline};
+use pipeline::{Frame, SUN_ANGULAR_RADIUS, create_pipeline};
 
 use cache::{MAX_SECTIONS, invalid_instance_mask, retain_caster, select_casters};
 const BUILDS_PER_FRAME: usize = 1;
@@ -476,14 +476,14 @@ fn composite(world: &World, query: ViewQuery<ShadowView>, mut context: RenderCon
     let frame = Frame {
         world_from_clip: clip_from_world.inverse().to_cols_array_2d(),
         eye_radius: [eye.x, eye.y, eye.z, RECEIVER_RADIUS],
-        sun_strength: [sun[0], sun[1], sun[2], 0.55 * atmosphere.daylight()],
+        sun_strength: [sun[0], sun[1], sun[2], 0.4 * atmosphere.daylight()],
         viewport: [
             viewport.physical_position.x as f32,
             viewport.physical_position.y as f32,
             viewport.physical_size.x as f32,
             viewport.physical_size.y as f32,
         ],
-        ray_length: [RAY_LENGTH, 0.0, 0.0, 0.0],
+        ray_length: [RAY_LENGTH, SUN_ANGULAR_RADIUS, 0.0, 0.0],
         invalid_instances: invalid_instance_mask(&shadows.ordered, |entity| {
             shadows.sections.contains_key(entity)
         }),
