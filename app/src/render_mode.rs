@@ -222,6 +222,8 @@ fn sync_dxr_terrain_shadows(
     let enabled = video.dxr_terrain_shadows && video.render_mode == RenderMode::Vanilla;
     if shadows.0 != enabled {
         shadows.0 = enabled;
+        bevy::log::info!(enabled, requested = video.dxr_terrain_shadows, mode = ?video.render_mode,
+            "DXR terrain shadow setting updated");
     }
 }
 

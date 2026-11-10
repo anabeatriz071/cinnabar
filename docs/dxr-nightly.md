@@ -16,8 +16,9 @@ The option requires Windows, DirectX 12, the bundled DXC and a GPU with inline r
 queries (DXR Tier 1.1). Keep Java shader packs Off. Turning shadows Off releases
 their cached terrain structures and restores ordinary rendering.
 
-Terrain uploads take priority over optional shadow builds. New shadow geometry
-waits while chunks are uploading or deferred. Stale casters are withdrawn on a
+Terrain uploads run before optional shadow builds. During continued uploads or
+deferred terrain work, one shadow section may build every eight eligible frames;
+otherwise one may build per frame. Shadow builds wait while the terrain arena grows. Stale casters are withdrawn on a
 mesh change, and only one shadow build submission may remain in flight. These
 limits reduce competing work; they do not establish a hardware performance pass.
 

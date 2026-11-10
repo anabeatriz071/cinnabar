@@ -26,6 +26,7 @@ use pipeline::{Frame, create_pipeline};
 
 const MAX_SECTIONS: u32 = 128;
 const BUILDS_PER_FRAME: usize = 1;
+const BUSY_BUILD_INTERVAL: u8 = 8;
 const CASTER_RADIUS: f32 = 72.0;
 const RECEIVER_RADIUS: f32 = 32.0;
 const RAY_LENGTH: f32 = CASTER_RADIUS - RECEIVER_RADIUS;
@@ -38,6 +39,10 @@ struct Shadows {
     view: Option<Entity>,
     pipelines: Mutex<HashMap<(wgpu::TextureFormat, u32), wgpu::RenderPipeline>>,
     pending: Arc<AtomicBool>,
+    build_budget: ShadowBuildBudget,
+    active: bool,
+    budget_wait_reported: bool,
+    composite_reported: AtomicBool,
 }
 
 struct Section {
@@ -104,7 +109,8 @@ fn install_preparation(render: &mut SubApp) {
         Render,
         prepare
             .run_if(bevy::prelude::resource_exists::<Shadows>)
-            .in_set(RenderSystems::PrepareResources),
+            .in_set(RenderSystems::PrepareResources)
+            .after(prepare_gpu_chunks),
     );
 }
 
@@ -140,7 +146,17 @@ fn prepare(
     )>,
     terrain: Query<(Entity, &ChunkRenderInstance, &GpuChunkAllocation)>,
 ) {
+    if shadows.active != control.preference.0 {
+        shadows.active = control.preference.0;
+        bevy::log::info!(
+            enabled = shadows.active,
+            "DXR terrain shadow preference applied"
+        );
+    }
     if !control.preference.0 {
+        shadows.build_budget = default();
+        shadows.budget_wait_reported = false;
+        shadows.composite_reported.store(false, Ordering::Relaxed);
         shadows.sections.clear();
         shadows.ordered.clear();
         shadows.scene = None;
@@ -208,8 +224,18 @@ fn prepare(
     if shadows.pending.load(Ordering::Acquire) {
         return;
     }
-    let build_limit = shadow_build_limit(&control.uploads);
+    let build_limit = shadows.build_budget.limit(&control.uploads);
     if build_limit == 0 {
+        if !shadows.budget_wait_reported {
+            shadows.budget_wait_reported = true;
+            bevy::log::info!(
+                uploads = control.uploads.chunk_updates,
+                deferred = control.uploads.candidates_deferred,
+                growing = control.uploads.uploads_waiting_for_growth,
+                time_limited = control.uploads.time_limited,
+                "DXR shadow builds waiting for terrain budget"
+            );
+        }
         return;
     }
     let gpu = device.wgpu_device();
@@ -265,15 +291,26 @@ fn prepare(
     shadows.scene = Some(scene);
 }
 
-/// Terrain publication always has priority over optional acceleration-structure builds.
-fn shadow_build_limit(uploads: &ChunkGpuUploadStats) -> usize {
-    if uploads.chunk_updates > 0
-        || uploads.candidates_deferred > 0
-        || uploads.uploads_waiting_for_growth > 0
-        || uploads.time_limited
-    {
-        0
-    } else {
+/// Gives terrain most busy frames while guaranteeing bounded shadow progress during streaming.
+#[derive(Default)]
+struct ShadowBuildBudget {
+    busy_frames: u8,
+}
+
+impl ShadowBuildBudget {
+    fn limit(&mut self, uploads: &ChunkGpuUploadStats) -> usize {
+        // Arena growth is a memory-pressure signal, so wait until its allocation completes.
+        if uploads.uploads_waiting_for_growth > 0 {
+            self.busy_frames = 0;
+            return 0;
+        }
+        if uploads.chunk_updates > 0 || uploads.candidates_deferred > 0 || uploads.time_limited {
+            self.busy_frames += 1;
+            if self.busy_frames < BUSY_BUILD_INTERVAL {
+                return 0;
+            }
+        }
+        self.busy_frames = 0;
         BUILDS_PER_FRAME
     }
 }
@@ -439,6 +476,12 @@ fn composite(world: &World, query: ViewQuery<ShadowView>, mut context: RenderCon
     pass.set_pipeline(pipeline);
     pass.set_bind_group(0, &group, &[]);
     pass.draw(0..3, 0..1);
+    if !shadows.composite_reported.swap(true, Ordering::Relaxed) {
+        bevy::log::info!(
+            sections = shadows.sections.len(),
+            "DXR terrain sunlight composite encoded"
+        );
+    }
     Ok(())
 }
 
@@ -446,10 +489,13 @@ fn composite(world: &World, query: ViewQuery<ShadowView>, mut context: RenderCon
 mod tests {
     use super::*;
 
-    /// Optional scene builds must leave uploading, deferred and growing terrain alone.
+    /// Streaming cannot indefinitely starve shadows; only one build is admitted per busy interval.
     #[test]
-    fn streaming_has_priority_over_shadow_builds() {
-        assert_eq!(shadow_build_limit(&ChunkGpuUploadStats::default()), 1);
+    fn streaming_has_priority_without_starving_shadow_builds() {
+        assert_eq!(
+            ShadowBuildBudget::default().limit(&default()),
+            BUILDS_PER_FRAME
+        );
         for stats in [
             ChunkGpuUploadStats {
                 chunk_updates: 1,
@@ -460,16 +506,35 @@ mod tests {
                 ..default()
             },
             ChunkGpuUploadStats {
-                uploads_waiting_for_growth: 1,
-                ..default()
-            },
-            ChunkGpuUploadStats {
                 time_limited: true,
                 ..default()
             },
         ] {
-            assert_eq!(shadow_build_limit(&stats), 0);
+            let mut budget = ShadowBuildBudget::default();
+            let admissions: Vec<_> = (0..BUSY_BUILD_INTERVAL * 2)
+                .map(|_| budget.limit(&stats))
+                .collect();
+            assert!(
+                admissions[..usize::from(BUSY_BUILD_INTERVAL - 1)]
+                    .iter()
+                    .all(|&count| count == 0)
+            );
+            assert_eq!(admissions.iter().sum::<usize>(), 2 * BUILDS_PER_FRAME);
+            assert!(admissions.iter().all(|&count| count <= BUILDS_PER_FRAME));
         }
+    }
+
+    #[test]
+    fn arena_growth_waits_and_idle_frames_resume_shadow_builds() {
+        let mut budget = ShadowBuildBudget::default();
+        let growth = ChunkGpuUploadStats {
+            uploads_waiting_for_growth: 1,
+            ..default()
+        };
+        for _ in 0..BUSY_BUILD_INTERVAL * 2 {
+            assert_eq!(budget.limit(&growth), 0);
+        }
+        assert_eq!(budget.limit(&default()), BUILDS_PER_FRAME);
     }
 
     /// Turning off the menu setting clears cached drawing state without waiting on the GPU.

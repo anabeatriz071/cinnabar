@@ -2255,10 +2255,13 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   occluded by world silhouettes get a dark edge fringe; per-sample composition is incomplete.
 - Experimental Windows DX12 sunlight shadows are controlled by the persisted Video toggle
   (Off by default), trace nearby resident opaque cube terrain, and withdraw stale casters
-  on mesh changes. Terrain uploads take priority over new shadow builds, and at most one
-  shadow build submission stays in flight. The headless probe checks ray queries and
+  on mesh changes. Continued terrain uploads admit one shadow build every eight eligible
+  frames, preventing indefinite starvation; arena growth still suspends builds, and only
+  one shadow submission stays in flight. The headless probe checks ray queries and
   block removal; the earlier prototype slowdown and stalled terrain have not yet been
-  reproduced on this fork. Fresh in-game removal, chunk streaming and RTX 5060 performance
+  reproduced on this fork. An RTX 5060 log confirms DX12 ray-query support and a large
+  terrain backlog; visible shadow activation remains unconfirmed. Fresh in-game removal,
+  chunk streaming and RTX 5060 performance
   acceptance, non-cube and cutout casters, Bedrock RTX materials and path tracing remain
   incomplete. See `docs/dxr-nightly.md` for test-build scope and the acceptance scenario.
 - Experimental Java shader packs (Iris/OptiFine format) are built into every client channel.
