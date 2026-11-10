@@ -47,6 +47,7 @@ jobs:
           pwsh -NoProfile -File packaging/windows/fetch-dxc.ps1 -Out .
           cargo test --locked -p launcher --lib dxr_shadows_default_off_persist_and_reset_with_video
           cargo test --locked -p oreui --lib dxr_video_toggle_follows_device_support_and_allows_disabling
+          cargo test --locked -p client-ui --lib gui_models::fire::tests
           cargo test --locked -p render --lib chunk::dxr::tests
           # Hosted runners normally lack DXR. A named missing-fixture result is not hardware acceptance.
           cargo test --locked -p render --test dx12_terrain_shadow -- --nocapture

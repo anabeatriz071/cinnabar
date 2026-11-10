@@ -199,7 +199,7 @@ fn review_actor_flames_reclaim_pages_from_optional_block_models() {
 }
 
 #[test]
-fn exhausted_required_pages_clear_previous_flame_frame_addresses() {
+fn exhausted_required_pages_keep_gui_alive_and_clear_previous_flame_frame_addresses() {
     let mut presentation =
         UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
     presentation.set_gui_fire_texture(Some(&texture())).unwrap();
@@ -207,6 +207,25 @@ fn exhausted_required_pages_clear_previous_flame_frame_addresses() {
     let page = presentation.gui_models.sources.pages[0].clone();
     presentation.gui_models.sources.pages = vec![page; MODEL_PAGES];
     presentation.gui_models.fire.pages_start = None;
-    assert!(presentation.install_gui_fire().is_err());
+    let original_pages = presentation.gui_models.sources.pages.clone();
+    presentation
+        .install_gui_fire()
+        .expect("optional flame artwork must not abort GUI startup");
     assert!(presentation.gui_models.fire.frames.is_empty());
+    assert!(presentation.gui_models.fire.pages_start.is_none());
+    assert_eq!(
+        presentation.gui_models.sources.pages.len(),
+        original_pages.len()
+    );
+    for (actual, original) in presentation
+        .gui_models
+        .sources
+        .pages
+        .iter()
+        .zip(&original_pages)
+    {
+        assert_eq!(actual.identity(), original.identity());
+    }
+    presentation.set_gui_fire_texture(None).unwrap();
+    assert_eq!(presentation.gui_models.sources.pages.len(), MODEL_PAGES);
 }

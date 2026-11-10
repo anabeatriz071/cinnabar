@@ -38,7 +38,7 @@ impl UiPresentationRuntime {
         &mut self,
         texture: Option<&ParticleTexture>,
     ) -> Result<(), UiPresentationError> {
-        if let Some(start) = self.gui_models.fire.pages_start {
+        if let Some(start) = self.gui_models.fire.pages_start.take() {
             self.gui_models.sources.pages.truncate(start);
         }
         self.gui_models.fire.source = texture.filter(|texture| valid(texture)).cloned();
@@ -68,7 +68,14 @@ impl UiPresentationRuntime {
             start = self.gui_models.sources.pages.len();
         }
         if start + pages.len() > MODEL_PAGES {
-            return Err(UiPresentationError::InvalidFontTexture);
+            // Flames are optional artwork; a full item atlas must not prevent joining a world.
+            self.gui_models.fire.pages_start = None;
+            tracing::warn!(
+                item_pages = start,
+                flame_pages = pages.len(),
+                "GUI actor flames unavailable: item texture atlas is full"
+            );
+            return Ok(());
         }
         let first = (self.textures.dynamic_start() + MODEL_PAGE + start) as u16;
         for frame in &mut frames {

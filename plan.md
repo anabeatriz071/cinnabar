@@ -1004,8 +1004,9 @@ and version-matched in-game acceptance remain incomplete.
   unsigned shorts after atlas placement. Tinted and glinting copies retain both formats.
   Opaque terrain-face tinting rounds to encoded output bytes.
   Source tiles stay aligned through the retained
-  levels; the source allocation retains shaped models alongside the flame page for the
-  pinned catalog.
+  levels. When required item artwork fills the model atlas, optional actor flames
+  log a capacity warning and remain hidden so GUI startup can continue. Preserving
+  flame artwork alongside every equipped-item catalog remains incomplete.
   The hotbar catalog comparison still has open shape, artwork and item-variant differences;
   animated dials and glint also require phase-matched acceptance.
   Glowstone, sea lanterns, shroomlight and froglight GUI cubes retain uniform texture
