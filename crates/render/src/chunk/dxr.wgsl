@@ -79,9 +79,12 @@ fn shadow(pixel: vec2<f32>, depth: f32) -> vec4<f32> {
     if incidence <= 0.0 {
         return vec4(0.0);
     }
+    // Preserve readable shadow contrast on sloped faces. Fade only near tangent light;
+    // the base scene already includes directional lighting, so a second cosine makes shadows too faint.
+    let sun_weight = smoothstep(0.0, 0.2, incidence);
     let coverage = sun_occlusion(origin, sun);
     let fade = 1.0 - smoothstep(frame.eye_radius.w * 0.75, frame.eye_radius.w, distance);
-    let alpha = frame.sun_strength.w * incidence * coverage * fade;
+    let alpha = frame.sun_strength.w * sun_weight * coverage * fade;
     return vec4(0.0, 0.0, 0.0, alpha);
 }
 

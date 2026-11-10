@@ -27,7 +27,7 @@ Only one shadow build submission may remain in flight.
 Sunlight uses a fixed world-space finite-sun pattern: two rays per shaded sample,
 with up to four where the opposing probes disagree. This softens shadow edges
 without animated noise, history trails or screen-space blur across surfaces.
-Shadow darkening follows the receiver's sun-facing angle and retains at least 60%
+Shadow darkening fades near tangent light, retaining contrast on sun-facing slopes and retains at least 45%
 of the existing scene lighting. This is approximate direct-light compositing;
 indirect lighting, denoising and thin-caster sampling improvements remain open.
 These limits do not establish a hardware performance pass.

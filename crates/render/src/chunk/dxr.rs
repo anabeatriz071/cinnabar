@@ -476,7 +476,7 @@ fn composite(world: &World, query: ViewQuery<ShadowView>, mut context: RenderCon
     let frame = Frame {
         world_from_clip: clip_from_world.inverse().to_cols_array_2d(),
         eye_radius: [eye.x, eye.y, eye.z, RECEIVER_RADIUS],
-        sun_strength: [sun[0], sun[1], sun[2], 0.4 * atmosphere.daylight()],
+        sun_strength: [sun[0], sun[1], sun[2], 0.55 * atmosphere.daylight()],
         viewport: [
             viewport.physical_position.x as f32,
             viewport.physical_position.y as f32,

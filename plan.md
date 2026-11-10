@@ -2259,7 +2259,7 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   opaque geometry reuses its BLAS; distance hysteresis and surface-normal ray offsets
   stabilize movement. Fixed finite-sun disk probes soften edges using two rays per
   shaded sample and up to four on mixed coverage. Sun-facing attenuation follows the
-  receiver normal and retains at least 60% of scene colour; this approximate composite
+  receiver normal and retains at least 45% of scene colour; this approximate composite
   does not supply indirect lighting or denoising. Continued uploads admit one shadow
   build every eight eligible frames; arena growth suspends builds, and only one shadow
   submission stays in flight. RTX 5060 user feedback confirms activation and that the

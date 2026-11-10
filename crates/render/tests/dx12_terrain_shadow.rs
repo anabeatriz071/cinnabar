@@ -105,9 +105,19 @@ fn dx12_terrain_shadow_updates_after_removal() {
             [255; 4]
         );
         assert_eq!(
-            composite_surface(&device, &queue, &scene, samples, 0.15, [0; 4], -2.0),
+            composite_surface(&device, &queue, &scene, samples, 0.15, [0; 4], (-2.0, 0.0)),
             [255; 4],
             "a face turned away from the sun keeps its existing ambient lighting"
+        );
+    }
+
+    // A steep sun-facing plane must retain readable occlusion rather than multiplying
+    // its already lightmapped colour by another weak cosine-weighted shadow factor.
+    for samples in [1, 4] {
+        assert_eq!(
+            composite_surface(&device, &queue, &scene, samples, 0.15, [0; 4], (2.0, 4.0)),
+            [188, 188, 188, 255],
+            "sloped receivers retain full interior shadow contrast"
         );
     }
 
@@ -153,7 +163,7 @@ fn composite_pixel(
         samples,
         ground_x,
         invalid_instances,
-        2.0,
+        (2.0, 0.0),
     )
 }
 
@@ -165,8 +175,9 @@ fn composite_surface(
     samples: u32,
     ground_x: f32,
     invalid_instances: [u32; 4],
-    eye_y: f32,
+    receiver: (f32, f32),
 ) -> [u8; 4] {
+    let (eye_y, slope) = receiver;
     use wgpu::{
         Color, Extent3d, LoadOp, Operations, RenderPassColorAttachment,
         RenderPassDepthStencilAttachment, RenderPassDescriptor, StoreOp, TexelCopyBufferInfo,
@@ -208,7 +219,7 @@ fn composite_surface(
     let depth_view = depth.create_view(&Default::default());
     let frame = pipeline::Frame {
         world_from_clip: [
-            [0.02, 0.0, 0.0, 0.0],
+            [0.02, 0.02 * slope, 0.0, 0.0],
             [0.0, 0.0, 0.02, 0.0],
             [0.0, 1.0, 0.0, 0.0],
             [ground_x, -0.5, 0.35, 1.0],
