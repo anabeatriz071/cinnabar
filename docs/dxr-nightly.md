@@ -33,3 +33,9 @@ The headless DXR probe checks occlusion and composite pixels after removal. A
 hosted runner without a DXR device reports a missing fixture; that is not a GPU
 pass. Fresh in-game removal, streaming, visual quality and RTX 5060 performance
 acceptance remain pending.
+
+The workflow validates the selected Windows regression tests alongside the release
+build, then publishes only when both jobs succeed. Test and release dependency
+caches are separate, and Go dependencies are cached too. The first run fills the
+caches; later compatible runs reuse them. Hosted-runner capacity, cache eviction
+and optimized linking still affect build time.

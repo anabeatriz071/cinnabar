@@ -12,45 +12,77 @@ concurrency:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_BUILD_BUILD_DIR: "{workspace-root}/target"
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CINNABAR_RELEASE_CHANNEL: nightly
+  CINNABAR_BUILD_COMMIT: ${{ github.sha }}
+
 jobs:
-  windows:
+  validation:
+    name: Validate Windows DXR
     if: github.event.repository.fork && github.ref == 'refs/heads/dxr-terrain-shadows'
     runs-on: windows-2025
-    timeout-minutes: 120
-    permissions:
-      contents: write
-    defaults:
-      run:
-        shell: bash
-    env:
-      CARGO_BUILD_BUILD_DIR: "{workspace-root}/target"
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_TEST_DEBUG: "0"
-      CINNABAR_RELEASE_CHANNEL: nightly
-      CINNABAR_BUILD_COMMIT: ${{ github.sha }}
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: rustfmt
+      # Profiles have separate caches. Workspace code is rebuilt from this checkout,
+      # while immutable dependencies survive between branch runs.
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+        with:
+          shared-key: dxr-windows-tests-v1
+          cache-bin: false
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
       - uses: actions/setup-go@v6
         with:
           go-version: stable
-          cache: false
-      - name: Check formatting and Windows compilation
-        run: |
-          cargo fmt --check
-          cargo check --locked --tests -p render -p cinnabar -p launcher -p oreui
-      - name: Test settings and shadow preparation
+          cache-dependency-path: |
+            core/go.sum
+            tools/localserver/go.sum
+            go.work.sum
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Build and run the DXR regression tests together
         run: |
           pwsh -NoProfile -File packaging/windows/fetch-dxc.ps1 -Out .
-          cargo test --locked -p launcher --lib dxr_shadows_default_off_persist_and_reset_with_video
-          cargo test --locked -p oreui --lib dxr_video_toggle_follows_device_support_and_allows_disabling
-          cargo test --locked -p client-ui --lib gui_models::fire::tests
-          cargo test --locked -p render --lib chunk::dxr::tests
-          # Hosted runners normally lack DXR. A named missing-fixture result is not hardware acceptance.
-          cargo test --locked -p render --test dx12_terrain_shadow -- --nocapture
+          # One feature graph avoids recompiling dependencies for each package separately.
+          # The release job compiles the application; these selected targets compile its regressions.
+          # Hosted GPU probes may report a named missing fixture, which is not hardware acceptance.
+          cargo nextest run --locked -p launcher -p oreui -p client-ui -p render \
+            --lib --test dx12_terrain_shadow \
+            -E 'test(dxr) | test(gui_models::fire::tests) | binary(dx12_terrain_shadow)' \
+            --no-fail-fast --success-output immediate
+
+  package:
+    name: Package Windows nightly
+    if: github.event.repository.fork && github.ref == 'refs/heads/dxr-terrain-shadows'
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+        with:
+          shared-key: dxr-windows-release-v1
+          cache-bin: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache-dependency-path: |
+            core/go.sum
+            tools/localserver/go.sum
+            go.work.sum
       - name: Install Windows packaging tools
         shell: pwsh
         run: |
@@ -85,6 +117,21 @@ jobs:
           name: dxr-windows-nightly
           path: dist/*
           if-no-files-found: error
+
+  publish:
+    name: Publish tested nightly
+    needs: [validation, package]
+    if: github.event.repository.fork && github.ref == 'refs/heads/dxr-terrain-shadows'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          name: dxr-windows-nightly
+          path: dist
       - name: Publish the fork's DXR nightly prerelease
         env:
           GH_TOKEN: ${{ github.token }}
