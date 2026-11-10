@@ -88,6 +88,8 @@ pub struct SettingsOptions {
     #[serde(skip)]
     anti_aliasing_support: ui::AntiAliasingSupport,
     #[serde(skip)]
+    dxr_shadows_supported: bool,
+    #[serde(skip)]
     render_distance_defaults: ui::RenderDistanceDefaults,
     keys: BTreeMap<String, u16>,
     /// Layout labels observed this session, independent of persisted bindings.
@@ -109,6 +111,7 @@ impl Default for SettingsOptions {
             values: BTreeMap::new(),
             graphics_api_revision: 0,
             anti_aliasing_support: ui::AntiAliasingSupport::default(),
+            dxr_shadows_supported: false,
             render_distance_defaults: ui::RenderDistanceDefaults::default(),
             keys: BTreeMap::new(),
             key_labels: BTreeMap::new(),
@@ -122,6 +125,16 @@ impl Default for SettingsOptions {
 }
 
 impl SettingsOptions {
+    /// Reports selected-device support without changing the saved shadow preference.
+    pub fn dxr_shadows_supported(&self) -> bool {
+        self.dxr_shadows_supported
+    }
+
+    /// Updates transient DXR support used to admit the Video toggle.
+    pub fn set_dxr_shadows_supported(&mut self, supported: bool) {
+        self.dxr_shadows_supported = supported;
+    }
+
     /// Captures an option's stored choice without resolving runtime defaults or device limits.
     pub fn option_preference(&self, index: usize) -> Option<OptionPreference> {
         let option = SETTINGS_OPTIONS.get(index)?;

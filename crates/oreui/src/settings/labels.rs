@@ -34,7 +34,13 @@ impl Content<'_, '_> {
         .map(str::to_owned)
         .or_else(|| (self.translate)(&description_key).map(|text| text.to_string()))
         .unwrap_or_default();
-        let description = if id == SettingId::ChunkOcclusionCulling {
+        let description = if id == SettingId::DxrTerrainShadows {
+            if self.view.settings_options.dxr_shadows_supported() {
+                "Experimental sunlight shadows for opaque blocks. Applies immediately; turn off here to restore normal rendering. Inactive with shader packs. Full RTX lighting and materials are not supported yet.".to_owned()
+            } else {
+                "Unavailable on this device. Requires Windows, DirectX 12, the bundled DXC and a GPU with DXR inline ray queries (Tier 1.1). Full RTX lighting and materials are not supported yet.".to_owned()
+            }
+        } else if id == SettingId::ChunkOcclusionCulling {
             "Skip terrain hidden behind other blocks. Visible terrain stays available.".to_owned()
         } else if id == SettingId::RenderScaleSharpen {
             "Sharpen the FSR-upscaled world when Render Resolution is below 100%. Turn off to keep FSR upscaling without sharpening.".to_owned()

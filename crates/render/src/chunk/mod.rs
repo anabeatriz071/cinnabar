@@ -97,7 +97,7 @@ pub(crate) mod blocks;
 mod bounds;
 mod constants;
 mod draw;
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 mod dxr;
 #[cfg(feature = "enhanced")]
 pub(crate) mod enhanced;

@@ -59,6 +59,7 @@ impl SettingsOptions {
         settings.video.smaa_mode = ui::SmaaMode::from_value(self.value(SMAA_OPTION.id));
         settings.video.render_distance_chunks = self.value(SettingId::RenderDistance) as u8;
         settings.video.chunk_occlusion_culling = self.value(SettingId::ChunkOcclusionCulling) != 0;
+        settings.video.dxr_terrain_shadows = self.value(SettingId::DxrTerrainShadows) != 0;
         settings.video.view_bobbing =
             ui::ViewBobbing::from_value(self.value(SettingId::ViewBobbing));
         settings.video.java_animations = self.value(ANIMATIONS_OPTION.id) == 0;
@@ -86,6 +87,22 @@ impl SettingsOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dxr_shadows_default_off_persist_and_reset_with_video() {
+        let mut options = SettingsOptions::default();
+        assert!(!options.user_settings().video.dxr_terrain_shadows);
+        assert!(options.set(SettingId::DxrTerrainShadows.index(), 1));
+        options.set_dxr_shadows_supported(true);
+        let mut restored = SettingsOptions::decode(&serde_json::to_vec(&options).unwrap()).unwrap();
+        assert!(restored.user_settings().video.dxr_terrain_shadows);
+        assert!(!restored.dxr_shadows_supported());
+        assert!(restored.set(SettingId::DxrTerrainShadows.index(), 0));
+        assert!(!restored.user_settings().video.dxr_terrain_shadows);
+        restored.set(SettingId::DxrTerrainShadows.index(), 1);
+        restored.reset_group(super::super::SettingsGroup::Video);
+        assert!(!restored.user_settings().video.dxr_terrain_shadows);
+    }
 
     #[test]
     fn other_player_cosmetics_survive_save_and_reset() {

@@ -15,6 +15,14 @@ use launcher::menu::settings_options::{
 use {crate::menu::MenuRuntime, client_state::RuntimeSettings};
 
 impl MenuRuntime {
+    /// Publishes selected-device admission without persisting hardware capabilities.
+    pub fn sync_dxr_shadows_supported(&mut self, supported: bool) {
+        if self.settings_options.dxr_shadows_supported() != supported {
+            Arc::make_mut(&mut self.settings_options).set_dxr_shadows_supported(supported);
+            self.settings_apply = true;
+        }
+    }
+
     /// Refreshes untouched render distance from the selected device before settings publication.
     pub fn sync_render_distance_device(&mut self, device: ui::RenderDistanceDevice) {
         if Arc::make_mut(&mut self.settings_options).set_render_distance_device(device) {

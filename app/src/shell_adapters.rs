@@ -22,6 +22,7 @@ pub(crate) fn drive_menu_services(
     audio_settings: Option<ResMut<client_audio::audio::AudioSettings>>,
     settings: Option<ResMut<client_state::RuntimeSettings>>,
     antialiasing: Option<Res<client_presentation::camera::antialiasing::CameraAntiAliasingSupport>>,
+    dxr: Option<Res<render_scene::terrain_shadows::DxrTerrainShadowsSupported>>,
     mut local_skin: Option<ResMut<LocalPlayerSkin>>,
     network: Option<Res<NetworkHandle<PackApplication>>>,
 ) {
@@ -47,6 +48,9 @@ pub(crate) fn drive_menu_services(
         menu.sync_anti_aliasing_support(support.0);
     }
     menu.sync_user_settings(settings);
+    if let Some(support) = dxr {
+        menu.sync_dxr_shadows_supported(support.0);
+    }
     menu.sync_language(&mut runtime);
     if let Some(account) = launcher_account.as_deref() {
         client_shell::menu::sync_cinnabar_players(account, &mut runtime.0);

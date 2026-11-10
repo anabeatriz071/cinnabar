@@ -58,6 +58,11 @@ impl ChunkRenderPlugin {
 impl Plugin for ChunkRenderPlugin {
     fn build(&self, app: &mut App) {
         install_atmosphere(app);
+        app.init_resource::<render_scene::terrain_shadows::DxrTerrainShadows>()
+            .init_resource::<render_scene::terrain_shadows::DxrTerrainShadowsSupported>()
+            .add_plugins(bevy::render::extract_resource::ExtractResourcePlugin::<
+                render_scene::terrain_shadows::DxrTerrainShadows,
+            >::default());
         app.init_resource::<render_scene::ChunkOcclusionCulling>()
             .add_plugins(bevy::render::extract_resource::ExtractResourcePlugin::<
                 render_scene::ChunkOcclusionCulling,

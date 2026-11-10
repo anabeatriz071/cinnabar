@@ -103,6 +103,9 @@ impl MenuRuntime {
         if let Some(mut state) = state {
             state
                 .settings
+                .set_dxr_shadows_supported(self.settings_options.dxr_shadows_supported());
+            state
+                .settings
                 .set_anti_aliasing_support(self.settings_options.anti_aliasing_support());
             state
                 .settings

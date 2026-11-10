@@ -559,5 +559,7 @@ settings! {
         [(SettingPanel::Touch, 0)], [], None, None;
     TouchSensitivity => "touch_sensitivity", slider("Touch sensitivity", 0, 100, 50),
         [(SettingPanel::Touch, 1)], [], None, None;
+    DxrTerrainShadows => "dxr_terrain_shadows", toggle("DXR Sunlight Shadows (Experimental)", ui::DEFAULT_DXR_TERRAIN_SHADOWS),
+        [(SettingPanel::VideoGraphics, 14)], [SettingsGroup::Video], None, None;
 
 }

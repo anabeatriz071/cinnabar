@@ -96,8 +96,8 @@ fn device_requirements(
     if let Some(constrained) = &settings.constrained_limits {
         limits = limits.or_worse_values_from(constrained);
     }
-    if render::device_settings::dxr_terrain_shadows_requested()
-        && adapter.get_info().backend == wgpu::Backend::Dx12
+    // Admit the optional feature once so the Video toggle can change it live.
+    if adapter.get_info().backend == wgpu::Backend::Dx12
         && adapter
             .features()
             .contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY)

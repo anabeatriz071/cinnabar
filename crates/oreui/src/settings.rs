@@ -544,7 +544,10 @@ impl Content<'_, '_> {
                 unreachable!("host controls are dispatched before option rendering")
             }
             SettingKind::Toggle => {
-                let (on, enabled) = (value != 0, true);
+                let on = value != 0;
+                let enabled = id != SettingId::DxrTerrainShadows
+                    || on
+                    || self.view.settings_options.dxr_shadows_supported();
                 self.boolean(
                     &title,
                     &description,

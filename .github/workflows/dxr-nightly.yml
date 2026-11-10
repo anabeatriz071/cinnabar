@@ -1,0 +1,102 @@
+name: DXR Windows nightly
+
+on:
+  push:
+    branches: [dxr-terrain-shadows]
+  workflow_dispatch:
+
+concurrency:
+  group: dxr-windows-nightly
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    if: github.event.repository.fork && github.ref == 'refs/heads/dxr-terrain-shadows'
+    runs-on: windows-2025
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_BUILD_BUILD_DIR: "{workspace-root}/target"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CINNABAR_RELEASE_CHANNEL: nightly
+      CINNABAR_BUILD_COMMIT: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: rustfmt
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+      - name: Check formatting and Windows compilation
+        run: |
+          cargo fmt --check
+          cargo check --locked --tests -p render -p cinnabar -p launcher -p oreui
+      - name: Test settings and shadow preparation
+        run: |
+          pwsh -NoProfile -File packaging/windows/fetch-dxc.ps1 -Out .
+          cargo test --locked -p launcher --lib dxr_shadows_default_off_persist_and_reset_with_video
+          cargo test --locked -p oreui --lib dxr_video_toggle_follows_device_support_and_allows_disabling
+          cargo test --locked -p render --lib chunk::dxr::tests
+          # Hosted runners normally lack DXR. A named missing-fixture result is not hardware acceptance.
+          cargo test --locked -p render --test dx12_terrain_shadow -- --nocapture
+      - name: Install Windows packaging tools
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          & "$env:USERPROFILE\.dotnet\tools\wix.exe" extension add -g WixToolset.BootstrapperApplications.wixext/5.0.2
+          choco install imagemagick --no-progress -y
+          if (-not (Get-Command make -ErrorAction SilentlyContinue)) { choco install make --no-progress -y }
+          $magick = Get-ChildItem "$env:ProgramFiles\ImageMagick*" -Directory | Select-Object -First 1
+          if (-not $magick) { throw "ImageMagick install directory not found" }
+          Add-Content $env:GITHUB_PATH $magick.FullName
+          Add-Content $env:GITHUB_PATH "$env:USERPROFILE\.dotnet\tools"
+          Add-Content $env:GITHUB_PATH "$env:ProgramData\chocolatey\bin"
+      - name: Build and package the selected commit
+        run: |
+          make package-binaries PACKAGE_CARGO_FLAGS=--timings
+          pwsh -NoProfile -File packaging/windows/build-installer.ps1
+          bash packaging/check-payload.sh windows .local/dist/windows-release/payload
+      - name: Prepare test downloads
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item .local/dist/windows-release/*-setup.exe dist/Cinnabar-DXR-nightly-windows-x64-setup.exe
+          Compress-Archive -Path .local/dist/windows-release/payload/* -DestinationPath dist/Cinnabar-DXR-nightly-windows-x64.zip
+          @("commit=$env:GITHUB_SHA", "branch=dxr-terrain-shadows", "run=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID") | Set-Content dist/build.txt
+          Get-ChildItem dist -File | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Set-Content checksums.txt
+          Move-Item checksums.txt dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dxr-windows-nightly
+          path: dist/*
+          if-no-files-found: error
+      - name: Publish the fork's DXR nightly prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag=nightly-dxr
+          previous=$(git ls-remote --tags origin "refs/tags/$tag" | cut -f1)
+          git push origin "$GITHUB_SHA:refs/tags/$tag" --force-with-lease="refs/tags/$tag:$previous"
+          cp docs/dxr-nightly.md "$RUNNER_TEMP/dxr-notes.md"
+          printf '\nSource commit: `%s`\n' "$GITHUB_SHA" >> "$RUNNER_TEMP/dxr-notes.md"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+            gh release edit "$tag" --title "DXR Windows nightly" --notes-file "$RUNNER_TEMP/dxr-notes.md" --prerelease --latest=false
+          else
+            gh release create "$tag" dist/* --verify-tag --title "DXR Windows nightly" --notes-file "$RUNNER_TEMP/dxr-notes.md" --prerelease --latest=false
+          fi

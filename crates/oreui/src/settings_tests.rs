@@ -1021,3 +1021,26 @@ fn enhanced_video_keeps_render_resolution_editable() {
         MenuAction::SettingsOption(at, _) if usize::from(*at) == index
     )));
 }
+
+/// Unsupported devices cannot enable DXR, but a saved choice can always be turned off.
+#[test]
+fn dxr_video_toggle_follows_device_support_and_allows_disabling() {
+    use launcher::menu::settings_options::SettingId;
+    let size = [1280.0, 720.0];
+    let mut view = settings_view("video_forced_index");
+    let index = SettingId::DxrTerrainShadows.index();
+    std::sync::Arc::make_mut(&mut view.settings_options).set_dxr_shadows_supported(true);
+    let offsets = centered_option(&view, index, size);
+    for (supported, value, interactive) in [(false, 0, false), (true, 0, true), (false, 1, true)] {
+        let options = std::sync::Arc::make_mut(&mut view.settings_options);
+        options.set_dxr_shadows_supported(supported);
+        options.set(index, value);
+        let frame = paint(&view, size, offsets.clone());
+        assert_eq!(
+            frame.hits.iter().any(|(action, _)| matches!(action,
+                MenuAction::SettingsOption(at, _) if usize::from(*at) == index
+            )),
+            interactive
+        );
+    }
+}

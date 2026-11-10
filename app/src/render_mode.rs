@@ -202,6 +202,7 @@ impl Plugin for RenderModePlugin {
                 Update,
                 (
                     apply_menu_render_mode,
+                    sync_dxr_terrain_shadows,
                     authored_textures::update_authored_textures,
                     apply_render_mode_to_cameras,
                     sync_enhanced_bloom,
@@ -209,6 +210,18 @@ impl Plugin for RenderModePlugin {
                     .chain(),
             );
         shader_pack::configure(app);
+    }
+}
+
+/// Publishes the persisted Video toggle independently of the selected renderer.
+fn sync_dxr_terrain_shadows(
+    settings: Res<RuntimeSettings>,
+    mut shadows: ResMut<render_scene::terrain_shadows::DxrTerrainShadows>,
+) {
+    let video = &settings.user_settings_update().1.video;
+    let enabled = video.dxr_terrain_shadows && video.render_mode == RenderMode::Vanilla;
+    if shadows.0 != enabled {
+        shadows.0 = enabled;
     }
 }
 

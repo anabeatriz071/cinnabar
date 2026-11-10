@@ -11,6 +11,8 @@ pub const DEFAULT_OUTLINE_SELECTION: bool = true;
 pub const DEFAULT_SHOW_CUSTOM_ITEM_MODELS: bool = true;
 /// Other players' catalog cosmetics are visible until the player opts out.
 pub const DEFAULT_SHOW_OTHER_PLAYER_COSMETICS: bool = true;
+/// Sunlight ray queries stay opt-in until hardware acceptance is complete.
+pub const DEFAULT_DXR_TERRAIN_SHADOWS: bool = false;
 /// Default and slider bounds for the field-of-view option, in degrees.
 pub const DEFAULT_FOV_DEGREES: i32 = 60;
 pub const MIN_FOV_DEGREES: i32 = 30;
@@ -215,6 +217,8 @@ pub struct VideoSettings {
     pub ui_scale: f32,
     pub render_distance_chunks: u8,
     pub chunk_occlusion_culling: bool,
+    /// Experimental sunlight shadows from resident opaque cube terrain on Windows DXR.
+    pub dxr_terrain_shadows: bool,
     pub brightness: f32,
     pub render_mode: RenderMode,
     /// File or folder name of the selected Java shader pack inside the shader-pack
@@ -259,6 +263,7 @@ impl Default for VideoSettings {
             ui_scale: 1.0,
             render_distance_chunks: MIN_RENDER_DISTANCE_CHUNKS,
             chunk_occlusion_culling: render_api::DEFAULT_CHUNK_OCCLUSION_CULLING,
+            dxr_terrain_shadows: DEFAULT_DXR_TERRAIN_SHADOWS,
             brightness: 0.5,
             render_mode: RenderMode::Vanilla,
             shader_pack: None,

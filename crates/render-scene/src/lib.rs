@@ -40,6 +40,7 @@ pub mod startup_presentation;
 pub mod startup_timing;
 pub mod terrain_culling;
 pub mod terrain_publication;
+pub mod terrain_shadows;
 pub mod ui;
 pub mod ui_glint;
 pub mod viewmodel;

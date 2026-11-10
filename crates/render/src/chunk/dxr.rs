@@ -1,4 +1,11 @@
 //! Bounded Windows DXR sunlight prototype for resident opaque cube terrain.
+#![cfg_attr(
+    not(windows),
+    allow(
+        dead_code,
+        reason = "Windows pass compiled on other hosts for regression checks"
+    )
+)]
 
 use super::*;
 use bevy::{
@@ -10,6 +17,7 @@ use bevy::{
     },
 };
 use render_scene::{AtmosphereFrame, ChunkRenderInstance, SkyKind};
+use std::sync::atomic::{AtomicBool, Ordering};
 use wgpu::util::DeviceExt;
 
 mod geometry;
@@ -17,7 +25,7 @@ mod pipeline;
 use pipeline::{Frame, create_pipeline};
 
 const MAX_SECTIONS: u32 = 128;
-const BUILDS_PER_FRAME: usize = 6;
+const BUILDS_PER_FRAME: usize = 1;
 const CASTER_RADIUS: f32 = 72.0;
 const RECEIVER_RADIUS: f32 = 32.0;
 const RAY_LENGTH: f32 = CASTER_RADIUS - RECEIVER_RADIUS;
@@ -29,6 +37,7 @@ struct Shadows {
     scene: Option<wgpu::Tlas>,
     view: Option<Entity>,
     pipelines: Mutex<HashMap<(wgpu::TextureFormat, u32), wgpu::RenderPipeline>>,
+    pending: Arc<AtomicBool>,
 }
 
 struct Section {
@@ -40,12 +49,20 @@ struct Section {
 
 /// Registers a separate pass after opaque terrain, including late GPU-culled draws.
 pub(super) fn install(app: &mut App) {
-    if !crate::device_settings::dxr_terrain_shadows_requested() {
-        return;
-    }
     let Some(render) = app.get_sub_app_mut(RenderApp) else {
         return;
     };
+    let supported = render
+        .world()
+        .resource::<RenderAdapter>()
+        .get_info()
+        .backend
+        == wgpu::Backend::Dx12
+        && render
+            .world()
+            .resource::<RenderDevice>()
+            .features()
+            .contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY);
     if render
         .world_mut()
         .try_schedule_scope(Core3d, |_, schedule| {
@@ -74,6 +91,9 @@ pub(super) fn install(app: &mut App) {
             .in_set(RenderSystems::PrepareResources),
     );
     app.add_systems(Last, super::admit_depth_sampling);
+    app.insert_resource(render_scene::terrain_shadows::DxrTerrainShadowsSupported(
+        supported,
+    ));
 }
 
 /// Leaves the ordinary renderer active when the selected device lacks DXR.
@@ -84,9 +104,11 @@ fn init(mut commands: Commands, adapter: Res<RenderAdapter>, device: Res<RenderD
             .contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY)
     {
         commands.init_resource::<Shadows>();
-        bevy::log::info!("experimental DXR terrain shadows enabled");
+        bevy::log::info!(
+            "experimental DXR terrain shadows available in Video settings (off by default)"
+        );
     } else {
-        bevy::log::warn!("DXR terrain shadows require a DX12 device with inline ray queries");
+        bevy::log::debug!("DXR terrain shadows require a DX12 device with inline ray queries");
     }
 }
 
@@ -95,6 +117,8 @@ fn prepare(
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
     arena: Res<ChunkGpuArena>,
+    uploads: Res<ChunkGpuUploadStats>,
+    preference: Res<render_scene::terrain_shadows::DxrTerrainShadows>,
     mut shadows: ResMut<Shadows>,
     views: Query<(
         Entity,
@@ -105,6 +129,13 @@ fn prepare(
     )>,
     terrain: Query<(Entity, &ChunkRenderInstance, &GpuChunkAllocation)>,
 ) {
+    if !preference.0 {
+        shadows.sections.clear();
+        shadows.ordered.clear();
+        shadows.scene = None;
+        shadows.view = None;
+        return;
+    }
     let selected = super::gpu_cull::select_gpu_cull_view(
         views
             .iter()
@@ -144,6 +175,7 @@ fn prepare(
         .iter()
         .map(|&(_, entity, chunk)| (entity, chunk))
         .collect();
+    let previous_sections = shadows.sections.len();
     shadows.sections.retain(|entity, section| {
         keep.get(entity).is_some_and(|chunk| {
             section.origin == chunk.origin
@@ -151,12 +183,23 @@ fn prepare(
                 && Arc::ptr_eq(&section.mesh, &chunk.cube_quads)
         })
     });
+    // Withdraw stale casters immediately, even when builds must wait for terrain or the GPU.
+    if shadows.sections.len() != previous_sections {
+        shadows.scene = None;
+    }
+    if shadows.pending.load(Ordering::Acquire) {
+        return;
+    }
+    let build_limit = shadow_build_limit(&uploads);
+    if build_limit == 0 {
+        return;
+    }
     let gpu = device.wgpu_device();
     let mut encoder = None;
     for (_, entity, chunk) in candidates
         .into_iter()
         .filter(|(_, entity, _)| !shadows.sections.contains_key(entity))
-        .take(BUILDS_PER_FRAME)
+        .take(build_limit)
         .collect::<Vec<_>>()
     {
         let encoder =
@@ -179,7 +222,7 @@ fn prepare(
         shadows.scene = None;
         return;
     }
-    if encoder.is_none() && ordered == shadows.ordered {
+    if encoder.is_none() && ordered == shadows.ordered && shadows.scene.is_some() {
         return;
     }
     let mut scene = gpu.create_tlas(&wgpu::CreateTlasDescriptor {
@@ -197,8 +240,24 @@ fn prepare(
     let mut encoder = encoder.unwrap_or_else(|| gpu.create_command_encoder(&Default::default()));
     encoder.build_acceleration_structures([], [&scene]);
     queue.submit([encoder.finish()]);
+    shadows.pending.store(true, Ordering::Release);
+    let pending = shadows.pending.clone();
+    queue.on_submitted_work_done(move || pending.store(false, Ordering::Release));
     shadows.ordered = ordered;
     shadows.scene = Some(scene);
+}
+
+/// Terrain publication always has priority over optional acceleration-structure builds.
+fn shadow_build_limit(uploads: &ChunkGpuUploadStats) -> usize {
+    if uploads.chunk_updates > 0
+        || uploads.candidates_deferred > 0
+        || uploads.uploads_waiting_for_growth > 0
+        || uploads.time_limited
+    {
+        0
+    } else {
+        BUILDS_PER_FRAME
+    }
 }
 
 /// Expands only the mesher's opaque runs. Each greedy quad becomes two triangles.
@@ -251,6 +310,12 @@ type ShadowView = (
 
 /// Darkens scene surfaces hit by a sun ray against nearby opaque cube terrain.
 fn composite(world: &World, query: ViewQuery<ShadowView>, mut context: RenderContext) -> Result {
+    if !world
+        .get_resource::<render_scene::terrain_shadows::DxrTerrainShadows>()
+        .is_some_and(|preference| preference.0)
+    {
+        return Ok(());
+    }
     let entity = query.entity();
     let (camera, view, target, depth, color, resolution, shader_pack) = query.into_inner();
     let Some(shadows) = world.get_resource::<Shadows>() else {
@@ -357,4 +422,63 @@ fn composite(world: &World, query: ViewQuery<ShadowView>, mut context: RenderCon
     pass.set_bind_group(0, &group, &[]);
     pass.draw(0..3, 0..1);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Optional scene builds must leave uploading, deferred and growing terrain alone.
+    #[test]
+    fn streaming_has_priority_over_shadow_builds() {
+        assert_eq!(shadow_build_limit(&ChunkGpuUploadStats::default()), 1);
+        for stats in [
+            ChunkGpuUploadStats {
+                chunk_updates: 1,
+                ..default()
+            },
+            ChunkGpuUploadStats {
+                candidates_deferred: 1,
+                ..default()
+            },
+            ChunkGpuUploadStats {
+                uploads_waiting_for_growth: 1,
+                ..default()
+            },
+            ChunkGpuUploadStats {
+                time_limited: true,
+                ..default()
+            },
+        ] {
+            assert_eq!(shadow_build_limit(&stats), 0);
+        }
+    }
+
+    /// Turning off the menu setting clears cached drawing state without waiting on the GPU.
+    #[test]
+    fn disabling_shadows_with_an_in_flight_build_releases_the_view() {
+        let (gpu, queue) = wgpu::Device::noop(&Default::default());
+        let device = RenderDevice::from(gpu);
+        let mut app = App::new();
+        let view = app.world_mut().spawn_empty().id();
+        let shadows = Shadows {
+            view: Some(view),
+            ordered: vec![view],
+            pending: Arc::new(AtomicBool::new(true)),
+            ..default()
+        };
+        app.insert_resource(ChunkGpuArena::new(&device))
+            .insert_resource(device)
+            .insert_resource(RenderQueue::new(queue))
+            .insert_resource(ChunkGpuUploadStats::default())
+            .insert_resource(render_scene::terrain_shadows::DxrTerrainShadows(false))
+            .insert_resource(shadows)
+            .add_systems(Update, prepare);
+        app.update();
+        let shadows = app.world().resource::<Shadows>();
+        assert!(shadows.view.is_none());
+        assert!(shadows.scene.is_none());
+        assert!(shadows.ordered.is_empty());
+        assert!(shadows.pending.load(Ordering::Acquire));
+    }
 }

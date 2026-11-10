@@ -84,11 +84,6 @@ pub fn bundled_dxc() -> Option<PathBuf> {
     Some(executable.parent()?.join(dxc_library()))
 }
 
-/// Enables the experimental terrain shadow pass for this Windows client run.
-pub fn dxr_terrain_shadows_requested() -> bool {
-    cfg!(windows) && std::env::var("CINNABAR_DXR_SHADOWS").as_deref() == Ok("1")
-}
-
 /// The DXC library's file name, from the pin the Windows packagers install.
 fn dxc_library() -> String {
     let pin: serde_json::Value =

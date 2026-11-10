@@ -2252,10 +2252,14 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   Diagnostics or bounded fixtures do not establish safe general gameplay use.
   Its MSAA nametag composite blends against resolved scene colour, so labels partly
   occluded by world silhouettes get a dark edge fringe; per-sample composition is incomplete.
-- The Windows DX12 sunlight prototype (`CINNABAR_DXR_SHADOWS=1`) traces against nearby resident opaque cube
-  terrain and refreshes its acceleration structures on mesh changes. The headless probe
-  checks ray queries and block removal. In-game acceptance, non-cube and cutout casters,
-  Bedrock RTX materials and path tracing remain incomplete.
+- Experimental Windows DX12 sunlight shadows are controlled by the persisted Video toggle
+  (Off by default), trace nearby resident opaque cube terrain, and withdraw stale casters
+  on mesh changes. Terrain uploads take priority over new shadow builds, and at most one
+  shadow build submission stays in flight. The headless probe checks ray queries and
+  block removal; the earlier prototype slowdown and stalled terrain have not yet been
+  reproduced on this fork. Fresh in-game removal, chunk streaming and RTX 5060 performance
+  acceptance, non-cube and cutout casters, Bedrock RTX materials and path tracing remain
+  incomplete. See `docs/dxr-nightly.md` for test-build scope and the acceptance scenario.
 - Experimental Java shader packs (Iris/OptiFine format) are built into every client channel.
   Shaders start Off. Terrain expansion currently needs nine compute storage buffers:
   six packed-chunk sources plus three job, vertex-output and atlas-remap buffers.
