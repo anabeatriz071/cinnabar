@@ -47,6 +47,14 @@ struct Section {
     blas: wgpu::Blas,
 }
 
+/// Inputs that suspend optional shadow work independently of world publication.
+#[derive(SystemParam)]
+struct Preparation<'w> {
+    uploads: Res<'w, ChunkGpuUploadStats>,
+    preference: Res<'w, render_scene::terrain_shadows::DxrTerrainShadows>,
+    panorama: Option<Res<'w, render_scene::PanoramaScene>>,
+}
+
 /// Registers a separate pass after opaque terrain, including late GPU-culled draws.
 pub(super) fn install(app: &mut App) {
     let Some(render) = app.get_sub_app_mut(RenderApp) else {
@@ -83,17 +91,21 @@ pub(super) fn install(app: &mut App) {
     {
         return;
     }
-    render.add_systems(RenderStartup, init).add_systems(
-        Render,
-        prepare
-            .run_if(bevy::prelude::resource_exists::<Shadows>)
-            .in_set(crate::world_passes::WorldPassSystems)
-            .in_set(RenderSystems::PrepareResources),
-    );
+    install_preparation(render);
     app.add_systems(Last, super::admit_depth_sampling);
     app.insert_resource(render_scene::terrain_shadows::DxrTerrainShadowsSupported(
         supported,
     ));
+}
+
+/// Keeps preference cleanup active even while menus suspend ordinary world passes.
+fn install_preparation(render: &mut SubApp) {
+    render.add_systems(RenderStartup, init).add_systems(
+        Render,
+        prepare
+            .run_if(bevy::prelude::resource_exists::<Shadows>)
+            .in_set(RenderSystems::PrepareResources),
+    );
 }
 
 /// Leaves the ordinary renderer active when the selected device lacks DXR.
@@ -117,8 +129,7 @@ fn prepare(
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
     arena: Res<ChunkGpuArena>,
-    uploads: Res<ChunkGpuUploadStats>,
-    preference: Res<render_scene::terrain_shadows::DxrTerrainShadows>,
+    control: Preparation,
     mut shadows: ResMut<Shadows>,
     views: Query<(
         Entity,
@@ -129,11 +140,18 @@ fn prepare(
     )>,
     terrain: Query<(Entity, &ChunkRenderInstance, &GpuChunkAllocation)>,
 ) {
-    if !preference.0 {
+    if !control.preference.0 {
         shadows.sections.clear();
         shadows.ordered.clear();
         shadows.scene = None;
         shadows.view = None;
+        return;
+    }
+    if control
+        .panorama
+        .as_ref()
+        .is_some_and(|panorama| !panorama.game_visible())
+    {
         return;
     }
     let selected = super::gpu_cull::select_gpu_cull_view(
@@ -190,7 +208,7 @@ fn prepare(
     if shadows.pending.load(Ordering::Acquire) {
         return;
     }
-    let build_limit = shadow_build_limit(&uploads);
+    let build_limit = shadow_build_limit(&control.uploads);
     if build_limit == 0 {
         return;
     }
@@ -456,10 +474,11 @@ mod tests {
 
     /// Turning off the menu setting clears cached drawing state without waiting on the GPU.
     #[test]
-    fn disabling_shadows_with_an_in_flight_build_releases_the_view() {
+    fn disabling_shadows_with_an_in_flight_build_releases_the_hidden_view() {
         let (gpu, queue) = wgpu::Device::noop(&Default::default());
         let device = RenderDevice::from(gpu);
-        let mut app = App::new();
+        let mut app = SubApp::new();
+        app.add_schedule(Render::base_schedule());
         let view = app.world_mut().spawn_empty().id();
         let shadows = Shadows {
             view: Some(view),
@@ -473,8 +492,12 @@ mod tests {
             .insert_resource(ChunkGpuUploadStats::default())
             .insert_resource(render_scene::terrain_shadows::DxrTerrainShadows(false))
             .insert_resource(shadows)
-            .add_systems(Update, prepare);
-        app.update();
+            .configure_sets(
+                Render,
+                crate::world_passes::WorldPassSystems.run_if(|| false),
+            );
+        install_preparation(&mut app);
+        app.world_mut().run_schedule(Render);
         let shadows = app.world().resource::<Shadows>();
         assert!(shadows.view.is_none());
         assert!(shadows.scene.is_none());
