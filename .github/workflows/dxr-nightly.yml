@@ -1,8 +1,6 @@
 name: DXR Windows nightly
 
 on:
-  push:
-    branches: [dxr-terrain-shadows]
   workflow_dispatch:
 
 concurrency:
@@ -117,8 +115,8 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item .local/dist/windows-release/*-setup.exe dist/Cinnabar-DXR-nightly-windows-x64-setup.exe
-          Compress-Archive -Path .local/dist/windows-release/payload/* -DestinationPath dist/Cinnabar-DXR-nightly-windows-x64.zip
+          Copy-Item .local/dist/windows-release/*-setup.exe dist/Cinnabar-DXR-preview-windows-x64-setup.exe
+          Compress-Archive -Path .local/dist/windows-release/payload/* -DestinationPath dist/Cinnabar-DXR-preview-windows-x64.zip
           @("commit=$env:GITHUB_SHA", "branch=dxr-terrain-shadows", "run=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID") | Set-Content dist/build.txt
           Get-ChildItem dist -File | ForEach-Object {
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -127,12 +125,12 @@ jobs:
           Move-Item checksums.txt dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v7
         with:
-          name: dxr-windows-nightly
+          name: dxr-windows-preview
           path: dist/*
           if-no-files-found: error
 
   publish:
-    name: Publish tested nightly
+    name: Publish versioned preview
     needs: [validation, package]
     if: github.event.repository.fork && github.ref == 'refs/heads/dxr-terrain-shadows'
     runs-on: ubuntu-24.04
@@ -143,21 +141,16 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
         with:
-          name: dxr-windows-nightly
+          name: dxr-windows-preview
           path: dist
-      - name: Publish the fork's DXR nightly prerelease
+      - name: Publish a separate DXR preview prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          tag=nightly-dxr
-          previous=$(git ls-remote --tags origin "refs/tags/$tag" | cut -f1)
-          git push origin "$GITHUB_SHA:refs/tags/$tag" --force-with-lease="refs/tags/$tag:$previous"
+          tag="dxr-preview-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}"
+          git tag "$tag" "$GITHUB_SHA"
+          git push origin "refs/tags/$tag"
           cp docs/dxr-nightly.md "$RUNNER_TEMP/dxr-notes.md"
           printf '\nSource commit: `%s`\n' "$GITHUB_SHA" >> "$RUNNER_TEMP/dxr-notes.md"
-          if gh release view "$tag" > /dev/null 2>&1; then
-            gh release upload "$tag" dist/* --clobber
-            gh release edit "$tag" --title "DXR Windows nightly" --notes-file "$RUNNER_TEMP/dxr-notes.md" --prerelease --latest=false
-          else
-            gh release create "$tag" dist/* --verify-tag --title "DXR Windows nightly" --notes-file "$RUNNER_TEMP/dxr-notes.md" --prerelease --latest=false
-          fi
+          gh release create "$tag" dist/* --verify-tag --title "DXR preview $GITHUB_RUN_NUMBER.$GITHUB_RUN_ATTEMPT" --notes-file "$RUNNER_TEMP/dxr-notes.md" --prerelease --latest=false

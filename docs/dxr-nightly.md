@@ -87,3 +87,28 @@ hand-light selection, shader bindings and cache invalidation. The nightly builds
 validation and packaging in parallel and publishes only after both succeed.
 Full build snapshots retain workspace outputs; content-checked timestamps and
 Cargo fingerprints preserve unchanged crates while rebuilding changed inputs.
+
+## RT pipeline migration status
+
+The RT pipeline migration is not implemented. The pinned wgpu revision
+`a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5` has no public pipeline creation or
+ray-dispatch API. Its `wgpu-hal/src/dx12/device.rs` pipeline creation/group-data
+functions and `wgpu-hal/src/dx12/command.rs` ray-pass/dispatch functions are
+unimplemented. Calling those HAL entry points would panic.
+
+The existing renderer still uses inline ray queries. Both queries and RT pipelines
+can implement path tracing; neither supplies light transport automatically.
+
+Migration requires a working DX12 backend/API first: DXIL shader libraries,
+state objects and hit groups, root signatures, aligned shader binding tables,
+resource barriers and lifetime tracking, and `DispatchRays`. Pipeline creation,
+miss/hit dispatch, resource lifetime and block-edit invalidation need hardware tests
+before connecting the world renderer. Then migrate material evaluation and direct
+block/sun lighting, implement stochastic area-light shadows and temporal
+accumulation/denoising, and add shadowed volumetric integration for light shafts.
+Existing materials and placed/held lights are prototypes, not acceptance evidence
+for this replacement. Full GI, water transport and DLSS remain separate work.
+
+Builds are now manual while this migration is pending. The workflow creates a new
+`dxr-preview-<run>-<attempt>-<commit>` prerelease and never moves or overwrites
+`nightly-dxr`. Starting a build is deferred until the requested renderer is ready.

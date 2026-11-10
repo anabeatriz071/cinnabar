@@ -2253,6 +2253,12 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   Diagnostics or bounded fixtures do not establish safe general gameplay use.
   Its MSAA nametag composite blends against resolved scene colour, so labels partly
   occluded by world silhouettes get a dark edge fringe; per-sample composition is incomplete.
+- RT pipeline replacement remains blocked on the pinned wgpu backend: its DX12
+  pipeline creation/group data and ray dispatch entry points are unimplemented,
+  and the public API exposes no RT pipelines. No migration, volumetric light
+  shafts, path-traced GI, or hardware acceptance is claimed. Backend/API work and
+  hit/miss/lifetime tests precede migrating the existing material/light passes.
+  Preview publishing is manual and creates new tags; it preserves `nightly-dxr`.
 - Experimental Windows DX12 lighting uses the persisted Video DXR toggle (Off by
   default). The opaque-cube sunlight cache retains movement stability and masks
   withdrawn instances individually. Finite-sun probes and near-tangent attenuation
