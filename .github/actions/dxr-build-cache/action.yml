@@ -54,18 +54,29 @@ runs:
         shared-key: dxr-windows-${{ inputs.lane }}-v1
         cache-bin: false
         save-if: false
+    - name: Prepare generated application output before recording source inputs
+      if: inputs.phase == 'restore'
+      shell: bash
+      run: mkdir -p app/.local
     - name: Restore timestamps only for identical source contents
       if: inputs.phase == 'restore'
       shell: bash
       working-directory: ${{ github.workspace }}
       run: python3 .github/actions/build-cache/cache.py restore-inputs
     - name: Verify source contents before saving compiler outputs
+      id: verify
+      continue-on-error: true
       if: inputs.phase == 'save'
       shell: bash
       working-directory: ${{ github.workspace }}
       run: python3 .github/actions/build-cache/cache.py verify-inputs
+    - name: Report skipped unsafe cache snapshot
+      if: inputs.phase == 'save' && steps.verify.outcome == 'failure'
+      shell: bash
+      run: echo "::warning::Cache input verification failed; skipping the cache without changing build/test results."
     - name: Save complete Rust build for this commit
-      if: inputs.phase == 'save' && inputs.key != inputs.matched-key
+      if: inputs.phase == 'save' && steps.verify.outcome == 'success' && inputs.key != inputs.matched-key
+      continue-on-error: true
       uses: actions/cache/save@v5
       with:
         key: ${{ inputs.key }}
