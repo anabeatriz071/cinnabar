@@ -180,11 +180,11 @@ fn dxr_native_trace_hits_misses_and_clears_removed_wgpu_instance() {
         contents: pipeline.shader_records(),
         usage: wgpu::BufferUsages::STORAGE,
     });
-    let output = device.create_buffer(&wgpu::BufferDescriptor {
-        label: None,
-        size: 8,
+    // Mark native output initialized in wgpu before raw writes; later copies must not lazily clear it.
+    let output = device.create_buffer_init(&BufferInitDescriptor {
+        label: Some("native RT output"),
+        contents: &[0_u8; 8],
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
     });
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
@@ -219,9 +219,20 @@ fn dxr_native_trace_hits_misses_and_clears_removed_wgpu_instance() {
         );
         let mut native_encoder = device.create_command_encoder(&Default::default());
         unsafe {
-            let table_hal = table.as_hal::<wgpu::hal::api::Dx12>().unwrap();
-            let output_hal = output.as_hal::<wgpu::hal::api::Dx12>().unwrap();
-            let scene_hal = scene.as_hal::<wgpu::hal::api::Dx12>().unwrap();
+            // Each as_hal guard owns a non-reentrant snatch lock. Keep only scalar addresses.
+            // The wgpu owners stay alive until completion of the final submission.
+            let table_address = {
+                let native = table.as_hal::<wgpu::hal::api::Dx12>().unwrap();
+                native.raw_resource().GetGPUVirtualAddress()
+            };
+            let output_address = {
+                let native = output.as_hal::<wgpu::hal::api::Dx12>().unwrap();
+                native.raw_resource().GetGPUVirtualAddress()
+            };
+            let scene_address = {
+                let native = scene.as_hal::<wgpu::hal::api::Dx12>().unwrap();
+                native.raw_resource().GetGPUVirtualAddress()
+            };
             native_encoder.as_hal_mut::<wgpu::hal::api::Dx12, _, _>(|encoder| {
                 let list = encoder
                     .unwrap()
@@ -229,35 +240,20 @@ fn dxr_native_trace_hits_misses_and_clears_removed_wgpu_instance() {
                     .unwrap()
                     .cast::<ID3D12GraphicsCommandList4>()
                     .unwrap();
-                let mut barrier = D3D12_RESOURCE_BARRIER {
+                let barrier = D3D12_RESOURCE_BARRIER {
                     Type: D3D12_RESOURCE_BARRIER_TYPE_UAV,
                     Anonymous: D3D12_RESOURCE_BARRIER_0 {
                         UAV: std::mem::ManuallyDrop::new(D3D12_RESOURCE_UAV_BARRIER {
-                            pResource: std::mem::ManuallyDrop::new(Some(
-                                scene_hal.raw_resource().clone(),
-                            )),
+                            pResource: std::mem::ManuallyDrop::new(None),
                         }),
                     },
                     ..Default::default()
                 };
                 list.ResourceBarrier(std::slice::from_ref(&barrier));
-                std::mem::ManuallyDrop::drop(&mut (*barrier.Anonymous.UAV).pResource);
                 pipeline.bind(&list);
-                list.SetComputeRootUnorderedAccessView(
-                    0,
-                    output_hal.raw_resource().GetGPUVirtualAddress(),
-                );
-                list.SetComputeRootShaderResourceView(
-                    1,
-                    scene_hal.raw_resource().GetGPUVirtualAddress(),
-                );
-                pipeline
-                    .dispatch(
-                        &list,
-                        table_hal.raw_resource().GetGPUVirtualAddress(),
-                        [2, 1, 1],
-                    )
-                    .unwrap();
+                list.SetComputeRootUnorderedAccessView(0, output_address);
+                list.SetComputeRootShaderResourceView(1, scene_address);
+                pipeline.dispatch(&list, table_address, [2, 1, 1]).unwrap();
             });
         }
         // Native state is confined to its encoder. Copying uses a fresh tracked wgpu encoder.
