@@ -113,8 +113,16 @@ fn native_dxr_frame_shadows_lights_reflections_and_withdrawal() {
         let mut commands = Vec::new();
         for phase in 0..3 {
             commands.extend(
-                dispatch::encode(&gpu, &programs, phase, &scene, &uniform, &lights, &buffers)
-                    .unwrap(),
+                dispatch::encode(
+                    &gpu,
+                    &programs,
+                    phase,
+                    scene_address,
+                    &uniform,
+                    &lights,
+                    &buffers,
+                )
+                .unwrap(),
             );
         }
         let readback = gpu.create_buffer(&wgpu::BufferDescriptor {
