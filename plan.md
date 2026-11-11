@@ -2253,19 +2253,16 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   Diagnostics or bounded fixtures do not establish safe general gameplay use.
   Its MSAA nametag composite blends against resolved scene colour, so labels partly
   occluded by world silhouettes get a dark edge fringe; per-sample composition is incomplete.
-- RT pipeline replacement remains blocked on the pinned wgpu backend: its DX12
-  pipeline creation/group data and ray dispatch entry points are unimplemented,
-  and the public API exposes no RT pipelines. An independent native backend now
-  implements state objects, shader tables and checked DispatchRays recording;
-  CPU tests and Windows cross-compilation pass. A synthetic GPU readback probe
-  and a backend-only Windows validation workflow exist; the Windows native
-  marker dispatch/readback passes without a missing-fixture skip. RTX 5060
-  world acceptance remains unverified. Safe command-list interop, resource
-  transitions and frame lifetime
-  integration remain incomplete. No world migration, volumetric light
-  shafts, path-traced GI, or hardware acceptance is claimed. Backend/API work and
-  hit/miss/lifetime tests precede migrating the existing material/light passes.
-  Preview publishing is manual and creates new tags; it preserves `nightly-dxr`.
+- RT pipeline migration uses the owner's wgpu fork, with two additive native HAL
+  accessors applied to the exact prior dependency revision. Existing public APIs
+  and behavior remain intact. The independent backend implements state objects,
+  shader tables and checked DispatchRays; CPU layout tests, Windows compilation
+  and the native marker dispatch/readback pass. A wgpu-to-native TraceRay probe
+  covers hits, misses and instance removal; its Windows acceptance is pending.
+  The game still uses inline queries. World-pass integration, PBR migration,
+  volumetric light shafts, area-light sampling and denoising remain incomplete.
+  RTX 5060 world acceptance is unverified. Installer publishing is manual and
+  creates new version tags, preserving `nightly-dxr`.
 - Experimental Windows DX12 lighting uses the persisted Video DXR toggle (Off by
   default). The opaque-cube sunlight cache retains movement stability and masks
   withdrawn instances individually. Finite-sun probes and near-tangent attenuation

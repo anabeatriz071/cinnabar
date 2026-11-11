@@ -3785,6 +3785,9 @@ dependencies = [
 name = "dxr-pipeline"
 version = "0.2.1"
 dependencies = [
+ "bytemuck",
+ "pollster",
+ "wgpu",
  "windows 0.62.2",
 ]
 
@@ -6090,7 +6093,7 @@ checksum = "bc0287524726960e07b119cebd01678f852f147742ae0d925e6a520dca956126"
 [[package]]
 name = "naga"
 version = "30.0.1"
-source = "git+https://github.com/cinnabar-mc/wgpu?rev=a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5#a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5"
+source = "git+https://github.com/anabeatriz071/wgpu?rev=a885ccbafe7cd5b3d2668c47124d1c584e662988#a885ccbafe7cd5b3d2668c47124d1c584e662988"
 dependencies = [
  "arrayvec",
  "bit-set",
@@ -6117,7 +6120,7 @@ dependencies = [
 [[package]]
 name = "naga-types"
 version = "30.0.1"
-source = "git+https://github.com/cinnabar-mc/wgpu?rev=a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5#a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5"
+source = "git+https://github.com/anabeatriz071/wgpu?rev=a885ccbafe7cd5b3d2668c47124d1c584e662988#a885ccbafe7cd5b3d2668c47124d1c584e662988"
 dependencies = [
  "hashbrown 0.17.1",
  "indexmap",
@@ -7134,6 +7137,12 @@ dependencies = [
  "rustix 1.1.4",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "pollster"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
 
 [[package]]
 name = "portable-atomic"
@@ -10375,7 +10384,7 @@ dependencies = [
 [[package]]
 name = "wgpu"
 version = "30.0.1"
-source = "git+https://github.com/cinnabar-mc/wgpu?rev=a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5#a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5"
+source = "git+https://github.com/anabeatriz071/wgpu?rev=a885ccbafe7cd5b3d2668c47124d1c584e662988#a885ccbafe7cd5b3d2668c47124d1c584e662988"
 dependencies = [
  "arrayvec",
  "bitflags 2.13.0",
@@ -10403,7 +10412,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core"
 version = "30.0.1"
-source = "git+https://github.com/cinnabar-mc/wgpu?rev=a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5#a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5"
+source = "git+https://github.com/anabeatriz071/wgpu?rev=a885ccbafe7cd5b3d2668c47124d1c584e662988#a885ccbafe7cd5b3d2668c47124d1c584e662988"
 dependencies = [
  "arrayvec",
  "bit-set",
@@ -10436,7 +10445,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-apple"
 version = "30.0.1"
-source = "git+https://github.com/cinnabar-mc/wgpu?rev=a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5#a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5"
+source = "git+https://github.com/anabeatriz071/wgpu?rev=a885ccbafe7cd5b3d2668c47124d1c584e662988#a885ccbafe7cd5b3d2668c47124d1c584e662988"
 dependencies = [
  "wgpu-hal",
 ]
@@ -10444,7 +10453,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-emscripten"
 version = "30.0.1"
-source = "git+https://github.com/cinnabar-mc/wgpu?rev=a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5#a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5"
+source = "git+https://github.com/anabeatriz071/wgpu?rev=a885ccbafe7cd5b3d2668c47124d1c584e662988#a885ccbafe7cd5b3d2668c47124d1c584e662988"
 dependencies = [
  "wgpu-hal",
 ]
@@ -10452,7 +10461,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-windows-linux-android"
 version = "30.0.1"
-source = "git+https://github.com/cinnabar-mc/wgpu?rev=a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5#a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5"
+source = "git+https://github.com/anabeatriz071/wgpu?rev=a885ccbafe7cd5b3d2668c47124d1c584e662988#a885ccbafe7cd5b3d2668c47124d1c584e662988"
 dependencies = [
  "wgpu-hal",
 ]
@@ -10460,7 +10469,7 @@ dependencies = [
 [[package]]
 name = "wgpu-hal"
 version = "30.0.1"
-source = "git+https://github.com/cinnabar-mc/wgpu?rev=a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5#a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5"
+source = "git+https://github.com/anabeatriz071/wgpu?rev=a885ccbafe7cd5b3d2668c47124d1c584e662988#a885ccbafe7cd5b3d2668c47124d1c584e662988"
 dependencies = [
  "android_system_properties",
  "arrayvec",
@@ -10515,7 +10524,7 @@ dependencies = [
 [[package]]
 name = "wgpu-naga-bridge"
 version = "30.0.1"
-source = "git+https://github.com/cinnabar-mc/wgpu?rev=a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5#a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5"
+source = "git+https://github.com/anabeatriz071/wgpu?rev=a885ccbafe7cd5b3d2668c47124d1c584e662988#a885ccbafe7cd5b3d2668c47124d1c584e662988"
 dependencies = [
  "naga",
  "wgpu-types",
@@ -10524,7 +10533,7 @@ dependencies = [
 [[package]]
 name = "wgpu-types"
 version = "30.0.1"
-source = "git+https://github.com/cinnabar-mc/wgpu?rev=a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5#a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5"
+source = "git+https://github.com/anabeatriz071/wgpu?rev=a885ccbafe7cd5b3d2668c47124d1c584e662988#a885ccbafe7cd5b3d2668c47124d1c584e662988"
 dependencies = [
  "bitflags 2.13.0",
  "bytemuck",

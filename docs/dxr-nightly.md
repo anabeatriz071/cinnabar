@@ -90,55 +90,35 @@ Cargo fingerprints preserve unchanged crates while rebuilding changed inputs.
 
 ## RT pipeline migration status
 
-The in-game RT pipeline migration is incomplete. The pinned wgpu revision
-`a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5` has no public pipeline creation or
-ray-dispatch API. Its `wgpu-hal/src/dx12/device.rs` pipeline creation/group-data
-functions and `wgpu-hal/src/dx12/command.rs` ray-pass/dispatch functions are
-unimplemented. Calling those HAL entry points would panic.
+The client pins `anabeatriz071/wgpu:cinnabar-v30` at
+`a885ccbafe7cd5b3d2668c47124d1c584e662988`. This applies two borrowed DX12 HAL
+accessors to the exact former pin `a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5`;
+existing public APIs and renderer behavior are unchanged. All wgpu-family patches
+share that revision and pass the existing release-branch pin guard. Development
+and validation use the owner's forks; an upstream PR is not a prerequisite.
 
-An additive `dxr-pipeline` crate now implements native DX12 state objects, triangle
+The independent `dxr-pipeline` backend implements native state objects, triangle
 hit groups, optional any-hit shaders, shader identifier tables, checked dispatch
-limits and native `DispatchRays` recording. It accepts the caller's native device
-and root signature without changing wgpu or Cinnabar's existing API. CPU layout
-checks, Windows cross-compilation and the Windows native marker-dispatch/readback
-probe pass. The probe emitted no missing-fixture skip; adapter identity, real-world
-rendering and RTX 5060 performance remain unverified. The
-backend-only Windows workflow compiles the synthetic DXIL fixture and tests this
-small crate; it does not build an installer or publish a release.
+limits and `DispatchRays`. Windows cross-compilation, CPU layout tests and the
+native marker-dispatch/readback probe pass. The wgpu interoperability probe builds
+an acceleration structure through the public wgpu API, traces a hit and miss through
+native HLSL `TraceRay`, then removes the instance and checks that both rays miss.
+This new bridge probe requires Windows DXR validation; missing fixtures are named
+skips and do not establish acceptance.
 
-The terrain integration still needs safe command-list access at a synchronized
-wgpu render boundary, explicit resource transitions and retained resource lifetimes.
-The pinned DX12 HAL exposes its device but keeps its command list private. Do not
-work around that by reinterpreting private structs or inserting unsynchronized
-native queue submissions. An additive upstream HAL accessor or an explicitly
-synchronized submission boundary is required before switching world passes.
+Native recording uses a dedicated raw encoder. Resource transitions and result
+copies use separate tracked wgpu encoders, submitted in order on the same queue.
+The pipeline and all referenced buffers/acceleration structures remain alive through
+submission completion. Native handles come from borrowed HAL accessors, without
+private struct reinterpretation or unsynchronized external queue submissions.
 
-The existing renderer still uses inline ray queries. Both queries and RT pipelines
-can implement path tracing; neither supplies light transport automatically.
+The in-game renderer still uses inline ray queries. World-pass integration, PBR
+migration, shadowed volumetric light shafts, stochastic area-light shadows and
+accumulation/denoising remain incomplete. GI, water transport and DLSS are separate
+work. The native marker probe alone does not establish terrain rendering or RTX
+5060 visual/performance acceptance.
 
-Migration requires a working DX12 backend/API first: DXIL shader libraries,
-state objects and hit groups, root signatures, aligned shader binding tables,
-resource barriers and lifetime tracking, and `DispatchRays`. Pipeline creation,
-miss/hit dispatch, resource lifetime and block-edit invalidation need hardware tests
-before connecting the world renderer. Then migrate material evaluation and direct
-block/sun lighting, implement stochastic area-light shadows and temporal
-accumulation/denoising, and add shadowed volumetric integration for light shafts.
-Existing materials and placed/held lights are prototypes, not acceptance evidence
-for this replacement. Full GI, water transport and DLSS remain separate work.
-
-Installer builds are now manual while this migration is pending. The workflow creates a new
-`dxr-preview-<run>-<attempt>-<commit>` prerelease and never moves or overwrites
-`nightly-dxr`. Starting a build is deferred until the requested renderer is ready.
-
-The proposed upstream HAL additions are in
-[`patches/wgpu-native-dxr-interop.patch`](patches/wgpu-native-dxr-interop.patch),
-against `cinnabar-v30` commit `4c7793e345d56ca2cac6dbaf213edd7aa3dd6af9`.
-They add borrowed command-list and acceleration-storage accessors only; no
-existing signature changes. This patch is **not applied or compiled into the
-client**. The implementation is pushed to `anabeatriz071/wgpu:native-dxr-interop`
-(commit `b3f0b5e`) with focused Windows validation. The GitHub integration rejected
-upstream PR creation with HTTP 403; no upstream PR or dependency-pin update was made.
-The review can be opened through
-[the upstream compare page](https://github.com/cinnabar-mc/wgpu/compare/cinnabar-v30...anabeatriz071:wgpu:native-dxr-interop?expand=1).
-The patch needs upstream review, compilation, native lifetime/barrier tests and
-merging before it can support the world-pass migration.
+The backend-only Windows workflow compiles DXIL fixtures and tests this small crate;
+it does not build an installer or publish a release. Installer builds remain manual
+while migration is pending. They create new `dxr-preview-<run>-<attempt>-<commit>`
+prereleases and never move or overwrite `nightly-dxr`.

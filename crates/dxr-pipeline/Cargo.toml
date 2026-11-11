@@ -13,3 +13,8 @@ windows = { version = "0.62", default-features = false, features = ["Win32_Graph
 
 [lints]
 workspace = true
+
+[target.'cfg(windows)'.dev-dependencies]
+wgpu = { workspace = true, features = ["dx12"] }
+pollster = "0.4"
+bytemuck = "1"

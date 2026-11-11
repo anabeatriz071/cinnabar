@@ -23,3 +23,7 @@ try {
 } finally { $zip.Dispose() }
 & (Join-Path $compiler "dxc.exe") -T lib_6_3 -WX -Fo (Join-Path $out "native-smoke.dxil") (Join-Path $Root "crates/dxr-pipeline/tests/smoke.hlsl")
 if ($LASTEXITCODE -ne 0) { throw "Native DXR fixture compilation failed ($LASTEXITCODE)" }
+
+& (Join-Path $compiler "dxc.exe") -T lib_6_3 -WX -Fo (Join-Path $out "native-trace.dxil") (Join-Path $Root "crates/dxr-pipeline/tests/trace.hlsl")
+if ($LASTEXITCODE -ne 0) { throw "Native TraceRay fixture compilation failed ($LASTEXITCODE)" }
+Copy-Item -LiteralPath (Join-Path $compiler $pin.library) -Destination (Join-Path $Root $pin.library) -Force

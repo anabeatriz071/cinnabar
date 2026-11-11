@@ -2435,5 +2435,5 @@ reason = "Public PBR configuration format spelling, not an asset identifier; Bed
 [[crates]]
 name = "dxr-pipeline"
 path = "crates/dxr-pipeline"
-allowed_dependencies = []
-forbidden_dependencies = ["bevy", "wgpu", "protocol", "assets"]
+allowed_dependencies = ["wgpu"]
+forbidden_dependencies = ["bevy", "protocol", "assets"]

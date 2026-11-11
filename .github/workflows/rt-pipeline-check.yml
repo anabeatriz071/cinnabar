@@ -3,6 +3,8 @@ on:
   push:
     branches: [dxr-terrain-shadows]
     paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - 'crates/dxr-pipeline/**'
       - 'packaging/windows/compile-rt-smoke.ps1'
       - '.github/workflows/rt-pipeline-check.yml'
@@ -13,7 +15,7 @@ jobs:
   native:
     name: Validate additive native DX12 backend
     runs-on: windows-2025
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       CARGO_INCREMENTAL: '0'
       CARGO_BUILD_BUILD_DIR: '{workspace-root}/target'
