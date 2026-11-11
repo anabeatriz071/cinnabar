@@ -66,9 +66,21 @@ enum Loading {
 pub(super) struct NativeTerrain {
     programs: Mutex<HashMap<(wgpu::TextureFormat, u32), Loading>>,
     buffers: Mutex<Option<Arc<Buffers>>>,
+    failed_size: Mutex<Option<[u32; 2]>>,
     encoded: Mutex<Option<Entity>>,
     pending: Mutex<Vec<KeepAlive>>,
     reported: AtomicBool,
+}
+
+/// Capture the immutable TLAS address while its new owner is still mutable.
+/// Existing public wgpu signatures stay unchanged; graph readers retain its Arc owner.
+pub(super) fn address(scene: &mut wgpu::Tlas) -> u64 {
+    // SAFETY: The short HAL guard borrows this live DX12 TLAS and only copies its address.
+    unsafe {
+        scene
+            .as_hal::<wgpu::hal::api::Dx12>()
+            .map_or(0, |value| value.raw_resource().GetGPUVirtualAddress())
+    }
 }
 
 pub(super) fn encoded(world: &World, entity: Entity) -> bool {
@@ -82,7 +94,20 @@ pub(super) fn encoded(world: &World, entity: Entity) -> bool {
 }
 
 /// Reset view publication before this frame's graph runs.
-pub(super) fn reset(state: Res<NativeTerrain>) {
+pub(super) fn reset(
+    state: Res<NativeTerrain>,
+    preference: Option<Res<render_scene::terrain_shadows::DxrTerrainShadows>>,
+) {
+    if preference.is_none_or(|value| !value.0) {
+        *state
+            .buffers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        *state
+            .failed_size
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    }
     *state
         .encoded
         .lock()

@@ -47,9 +47,11 @@ jobs:
           cache: false
       - name: Check formatting
         run: cargo fmt --check
+      - name: Compile native terrain DXIL for tests
+        shell: pwsh
+        run: ./packaging/windows/compile-rt-smoke.ps1
       - name: Build and run the DXR regression tests together
         run: |
-          pwsh -NoProfile -File packaging/windows/compile-rt-smoke.ps1
           pwsh -NoProfile -File packaging/windows/fetch-dxc.ps1 -Out .
           # One feature graph avoids recompiling dependencies for each package separately.
           # The release job compiles the application; these selected targets compile its regressions.

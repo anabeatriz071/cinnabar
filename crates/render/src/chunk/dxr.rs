@@ -40,6 +40,8 @@ struct Shadows {
     sections: HashMap<Entity, Section>,
     ordered: Vec<Entity>,
     scene: Option<Arc<wgpu::Tlas>>,
+    #[cfg(windows)]
+    native_address: u64,
     surfaces: Option<surfaces::SceneSurfaces>,
     surface_quads: Option<Buffer>,
     surface_allocation_failed: bool,
@@ -406,6 +408,10 @@ fn prepare(
     shadows.surfaces = shadows.surface_quads.as_ref().map(|buffer| {
         surfaces::SceneSurfaces::new(gpu, &shadows.ordered, &shadows.sections, buffer)
     });
+    #[cfg(windows)]
+    {
+        shadows.native_address = native::address(&mut scene);
+    }
     shadows.scene = Some(Arc::new(scene));
 }
 

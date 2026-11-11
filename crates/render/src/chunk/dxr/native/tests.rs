@@ -71,6 +71,7 @@ fn native_dxr_frame_shadows_lights_reflections_and_withdrawal() {
     ));
     build.build_acceleration_structures([], [&scene]);
     queue.submit([build.finish()]);
+    let scene_address = super::address(&mut scene);
     // ByteAddressBuffer ABI: float3 world point, ten-bit normal + valid bit; two float4 normal rows.
     let normal = 512u32 | (512u32 << 10) | 0x80000000;
     let receivers = [
@@ -167,6 +168,12 @@ fn native_dxr_frame_shadows_lights_reflections_and_withdrawal() {
             assert_eq!(light, 0);
         }
         assert!(words[32..35].iter().all(|v| f32::from_bits(*v).is_finite()));
+        if withdrawn {
+            assert!(
+                words[32..35].iter().any(|v| f32::from_bits(*v) > 0.0),
+                "visible light must scatter in the medium"
+            );
+        }
         drop(mapped);
         readback.unmap();
     }

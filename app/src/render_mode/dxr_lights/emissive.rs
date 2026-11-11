@@ -140,6 +140,37 @@ mod tests {
         assert!(scan(key, &world::SubChunk::from_runtime_ids(&blocks), resolve).is_empty());
     }
     #[test]
+    fn dxr_mer_emission_produces_coloured_face_lights_and_zero_stays_dark() {
+        let page = |rgba: [u8; 4]| TextureArray {
+            layers: 1,
+            mips: vec![assets::TextureMip {
+                size: 1,
+                rgba8: rgba.to_vec().into_boxed_slice(),
+            }]
+            .into(),
+        };
+        let assets = RuntimeAssets::diagnostic();
+        let block = assets.resolve(assets::NetworkIdMode::Sequential, 0);
+        let mut references = vec![u32::MAX; EnhancedTextureAssets::REFERENCE_BASE_WORDS];
+        references[0] = assets::texture::PBR_REF_COLOR | assets::texture::PBR_REF_MATERIAL;
+        let mut maps = EnhancedTextureAssets::new(
+            [page([255, 0, 0, 255]), page([255, 0, 0, 255])],
+            [page([128, 128, 255, 255]), page([128, 128, 255, 255])],
+            [page([0, 128, 255, 255]), page([0, 128, 255, 255])],
+            references.into_boxed_slice(),
+        )
+        .unwrap();
+        let lights = templates(&assets, &maps, block);
+        assert_eq!(lights.len(), BlockFace::ALL.len());
+        for light in lights {
+            assert_eq!(light.colour, [1., 0., 0.]);
+            assert!(light.intensity > 0.4 && light.intensity < 0.41);
+            assert!(light.position.into_iter().any(|x| x.abs() > 0.5));
+        }
+        maps.mer_pages[0] = page([0, 0, 255, 255]);
+        assert!(templates(&assets, &maps, block).is_empty());
+    }
+    #[test]
     fn dxr_material_average_does_not_read_outside_the_layer() {
         let page = TextureArray {
             layers: 1,

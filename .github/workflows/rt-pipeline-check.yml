@@ -64,8 +64,13 @@ jobs:
         shell: pwsh
         run: ./packaging/windows/compile-rt-smoke.ps1
       - name: Check game and renderer compatibility
+        id: check
+        continue-on-error: true
         run: cargo check --locked --tests -p render -p cinnabar
       - name: Test native deferred frame and material bindings
+        id: frame
+        if: steps.check.outcome == 'success'
+        continue-on-error: true
         run: cargo test --locked -p render --lib chunk::dxr::native -- --nocapture
       - uses: ./.github/actions/dxr-build-cache
         with:
@@ -73,3 +78,6 @@ jobs:
           lane: tests
           key: ${{ steps.cache.outputs.key }}
           matched-key: ${{ steps.cache.outputs.matched-key }}
+      - name: Require clean compatibility and frame checks
+        if: steps.check.outcome != 'success' || steps.frame.outcome != 'success'
+        run: exit 1

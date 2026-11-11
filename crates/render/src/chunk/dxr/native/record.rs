@@ -27,6 +27,9 @@ pub(in super::super) fn composite(
     let Some((scene, surfaces)) = shadows.scene.as_ref().zip(shadows.surfaces.as_ref()) else {
         return Ok(());
     };
+    if shadows.native_address == 0 {
+        return Ok(());
+    }
     let Some(state) = world.get_resource::<NativeTerrain>() else {
         return Ok(());
     };
@@ -72,6 +75,14 @@ pub(in super::super) fn composite(
     ) else {
         return Ok(());
     };
+    if *state
+        .failed_size
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        == Some(size)
+    {
+        return Ok(());
+    }
     let buffers = {
         let mut cache = state
             .buffers
@@ -79,8 +90,16 @@ pub(in super::super) fn composite(
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if cache.as_ref().is_none_or(|b| b.size != size) {
             let Some(buffers) = Buffers::new(&device, size) else {
+                *state
+                    .failed_size
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(size);
                 return Ok(());
             };
+            *state
+                .failed_size
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
             buffers.initialize(context.command_encoder());
             *cache = Some(Arc::new(buffers));
         }
@@ -197,9 +216,33 @@ pub(in super::super) fn composite(
     };
     // Resolve every fallible native command before publishing any of them to the graph.
     let commands = [
-        dispatch::encode(gpu, &programs, 0, scene, &uniform, &light_buffer, &buffers)?,
-        dispatch::encode(gpu, &programs, 1, scene, &uniform, &light_buffer, &buffers)?,
-        dispatch::encode(gpu, &programs, 2, scene, &uniform, &light_buffer, &buffers)?,
+        dispatch::encode(
+            gpu,
+            &programs,
+            0,
+            shadows.native_address,
+            &uniform,
+            &light_buffer,
+            &buffers,
+        )?,
+        dispatch::encode(
+            gpu,
+            &programs,
+            1,
+            shadows.native_address,
+            &uniform,
+            &light_buffer,
+            &buffers,
+        )?,
+        dispatch::encode(
+            gpu,
+            &programs,
+            2,
+            shadows.native_address,
+            &uniform,
+            &light_buffer,
+            &buffers,
+        )?,
     ];
     let receive_entry = if samples > 1 {
         "receivers_msaa"

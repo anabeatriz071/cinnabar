@@ -14,7 +14,6 @@ reads = [
     "crates/assets/data/block-registry-v1001.bin",
     "crates/assets/data/block-registry-v2225.bin",
     "packaging/windows/dxc.json",
-    "packaging/windows/compile-rt-smoke.ps1",
 ]
 
 [features]

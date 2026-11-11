@@ -17,7 +17,7 @@ pub(super) fn encode(
     gpu: &wgpu::Device,
     programs: &Programs,
     phase: usize,
-    scene: &wgpu::Tlas,
+    scene_address: u64,
     uniform: &wgpu::Buffer,
     lights: &wgpu::Buffer,
     buffers: &Buffers,
@@ -40,14 +40,7 @@ pub(super) fn encode(
     );
     let roots = [
         address(uniform),
-        // SAFETY: Same native device and scene owner retained until submitted work completes.
-        unsafe {
-            scene
-                .as_hal::<wgpu::hal::api::Dx12>()
-                .expect("DX12 TLAS")
-                .raw_resource()
-                .GetGPUVirtualAddress()
-        },
+        scene_address,
         address(&buffers.receivers),
         address(&buffers.normals),
         address(lights),
