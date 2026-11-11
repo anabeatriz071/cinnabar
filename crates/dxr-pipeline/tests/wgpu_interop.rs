@@ -196,11 +196,14 @@ fn dxr_native_trace_hits_misses_and_clears_removed_wgpu_instance() {
         (false, [0x484954, 0x4d495353]),
         (true, [0x4d495353, 0x4d495353]),
     ] {
+        eprintln!("Native interop round: remove={remove}");
         if remove {
             scene[0] = None;
             let mut update = device.create_command_encoder(&Default::default());
             update.build_acceleration_structures([], [&scene]);
+            eprintln!("Submitting removed-instance AS rebuild");
             queue.submit([update.finish()]);
+            eprintln!("Removed-instance rebuild submitted");
         }
         let mut transitions = device.create_command_encoder(&Default::default());
         transitions.transition_resources(
@@ -259,7 +262,9 @@ fn dxr_native_trace_hits_misses_and_clears_removed_wgpu_instance() {
         // Native state is confined to its encoder. Copying uses a fresh tracked wgpu encoder.
         let mut copy = device.create_command_encoder(&Default::default());
         copy.copy_buffer_to_buffer(&output, 0, &readback, 0, 8);
+        eprintln!("Submitting native trace and copy");
         queue.submit([transitions.finish(), native_encoder.finish(), copy.finish()]);
+        eprintln!("Native trace submitted; polling completion");
         let (send, receive) = std::sync::mpsc::channel();
         readback
             .slice(..)
@@ -272,8 +277,13 @@ fn dxr_native_trace_hits_misses_and_clears_removed_wgpu_instance() {
                 timeout: Some(std::time::Duration::from_secs(10)),
             })
             .unwrap();
+        eprintln!("Native trace poll completed");
         receive.recv().unwrap().unwrap();
         let mapped = readback.slice(..).get_mapped_range().unwrap();
+        eprintln!(
+            "Native trace result: {:?}",
+            bytemuck::cast_slice::<u8, u32>(&mapped)
+        );
         assert_eq!(bytemuck::cast_slice::<u8, u32>(&mapped), &expected);
         drop(mapped);
         readback.unmap();
