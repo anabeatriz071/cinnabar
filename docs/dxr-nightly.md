@@ -104,7 +104,9 @@ native marker-dispatch/readback probe pass. The wgpu interoperability probe buil
 an acceleration structure through the public wgpu API, traces a hit and miss through
 native HLSL `TraceRay`, then removes the instance and checks that both rays miss.
 This new bridge probe requires Windows DXR validation; missing fixtures are named
-skips and do not establish acceptance.
+skips and do not establish acceptance. If GitHub rejects dispatch because Actions
+is disabled, enable Actions in the fork's repository settings before running the
+backend check. This does not require starting an installer build.
 
 Native recording uses a dedicated raw encoder. Resource transitions and result
 copies use separate tracked wgpu encoders, submitted in order on the same queue.
