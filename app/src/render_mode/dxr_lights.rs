@@ -7,12 +7,15 @@ use render_scene::terrain_shadows::{
     DxrLocalLight, DxrLocalLights, DxrTerrainShadows, MAX_DXR_LOCAL_LIGHTS,
 };
 use std::{collections::HashMap, sync::Arc};
+mod emissive;
 
 #[derive(Default)]
 pub(super) struct EmitterCache {
     source: Option<(u64, u64)>,
     names_revision: u64,
     radius: u8,
+    authored: Option<Arc<render_scene::EnhancedTextureAssets>>,
+    templates: HashMap<u32, Vec<DxrLocalLight>>,
     emitters: HashMap<u32, [f32; 3]>,
     assets: Option<Arc<assets::RuntimeAssets>>,
     sections: HashMap<world::SubChunkKey, (Arc<world::SubChunk>, Vec<DxrLocalLight>)>,
@@ -44,6 +47,7 @@ pub(super) fn publish(
     player: Res<client_state::PlayerRuntime>,
     ui: Res<UiRuntimeResource>,
     cameras: Query<&Transform, With<FlyCamera>>,
+    textures: Option<Res<render_scene::ChunkTextureAssets>>,
     mut output: ResMut<DxrLocalLights>,
     mut cache: Local<EmitterCache>,
 ) {
@@ -71,9 +75,22 @@ pub(super) fn publish(
             ..default()
         };
     }
+    let maps = textures
+        .as_ref()
+        .and_then(|textures| textures.enhanced.clone());
+    if match (&cache.authored, &maps) {
+        (Some(old), Some(new)) => !Arc::ptr_eq(old, new),
+        (None, None) => false,
+        _ => true,
+    } {
+        cache.authored = maps.clone();
+        cache.sections.clear();
+        cache.templates.clear();
+    }
     if cache.names_revision != stream.authority().block_name_revision() {
         cache.names_revision = stream.authority().block_name_revision();
         cache.sections.clear();
+        cache.templates.clear();
         cache.emitters = EMITTERS
             .iter()
             .flat_map(|&(name, colour)| {
@@ -93,6 +110,9 @@ pub(super) fn publish(
         .map(|block| block.light_properties().emission())
         .max()
         .unwrap_or(0);
+    if maps.is_some() {
+        cache.radius = cache.radius.max(15);
+    }
     let horizon = render_scene::terrain_shadows::DXR_RECEIVER_RADIUS;
     let span = ((horizon + f32::from(cache.radius)) / world::SUB_CHUNK_SIDE as f32).ceil() as i32;
     let eye = camera.translation;
@@ -137,7 +157,7 @@ pub(super) fn publish(
             continue;
         }
         scans += 1;
-        let emitters = scan_section(key, &data, |id| {
+        let mut emitters = scan_section(key, &data, |id| {
             let &colour = cache.emitters.get(&id)?;
             let emission = stream
                 .block_network_id(id)
@@ -145,6 +165,23 @@ pub(super) fn publish(
                 .map_or(0, |block| block.light_properties().emission());
             (emission != 0).then_some((emission, colour))
         });
+        if let Some(maps) = maps.as_ref() {
+            emitters.extend(emissive::scan(key, &data, |id| {
+                if cache.emitters.contains_key(&id) {
+                    return Vec::new();
+                }
+                cache
+                    .templates
+                    .entry(id)
+                    .or_insert_with(|| {
+                        stream
+                            .block_network_id(id)
+                            .and_then(|wire| assets.resolve_known(stream.network_id_mode(), wire))
+                            .map_or_else(Vec::new, |block| emissive::templates(assets, maps, block))
+                    })
+                    .clone()
+            }));
+        }
         cache.sections.insert(key, (data, emitters));
     }
     let mut lights = Vec::new();

@@ -2276,7 +2276,10 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   GGX direct terms and one-bounce metal reflections against cached opaque geometry.
   Authored albedo modulates the existing lightmapped scene; reflection misses use
   approximate sky colour and roughness filters texture detail, not reflection geometry.
-  Placed torch/lantern variants and both local hands publish bounded direct lights;
+  Placed torch/lantern variants, redstone torches, end rods and both local hands
+  publish bounded direct lights. Active-pack MER face-average emitters illuminate
+  neighbours from face-offset sources (provisional, 32 representatives per section;
+  not per-emissive-pixel path transport). Authored source changes invalidate discovery;
   discovery scans two changed sections per frame, retains at most 32 sources and
   evaluates four eligible lights per sample. Hand anchors and source colours are
   provisional. Stable ray-material slots reserve about 24 MiB; only changed sections

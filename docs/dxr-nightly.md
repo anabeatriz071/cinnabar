@@ -137,6 +137,11 @@ this is not full Bedrock media-coefficient parity. Intermediate allocations shri
 above device storage-binding limits. Authored colour, normal and MER evaluation is
 shared with the compatibility path. Roughness filters reflection texture detail;
 physically sampled glossy geometry and temporal denoising remain incomplete.
+Placed and held default emitters include torch, lantern, soul variants, redstone
+torches and end rods. Active-pack MER emission adds face-offset lights coloured by
+the final albedo mip. Dense emissive sections retain 32 representative face lights
+nearest their centre; the frame still selects 32 total sources. This bounded direct
+lighting approximation is not emissive-pixel path transport or GI.
 GI, water transport and DLSS are separate work. Windows integration and synthetic
 frame verification are in progress; RTX 5060 world visuals and performance remain
 unverified.
