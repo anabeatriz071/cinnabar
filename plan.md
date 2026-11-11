@@ -2258,8 +2258,10 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   and the public API exposes no RT pipelines. An independent native backend now
   implements state objects, shader tables and checked DispatchRays recording;
   CPU tests and Windows cross-compilation pass. A synthetic GPU readback probe
-  and a backend-only Windows validation workflow exist; GPU execution is not
-  confirmed. Safe command-list interop, resource transitions and frame lifetime
+  and a backend-only Windows validation workflow exist; the Windows native
+  marker dispatch/readback passes without a missing-fixture skip. RTX 5060
+  world acceptance remains unverified. Safe command-list interop, resource
+  transitions and frame lifetime
   integration remain incomplete. No world migration, volumetric light
   shafts, path-traced GI, or hardware acceptance is claimed. Backend/API work and
   hit/miss/lifetime tests precede migrating the existing material/light passes.
