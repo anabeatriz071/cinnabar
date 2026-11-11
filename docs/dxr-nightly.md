@@ -100,8 +100,9 @@ An additive `dxr-pipeline` crate now implements native DX12 state objects, trian
 hit groups, optional any-hit shaders, shader identifier tables, checked dispatch
 limits and native `DispatchRays` recording. It accepts the caller's native device
 and root signature without changing wgpu or Cinnabar's existing API. CPU layout
-checks and a Windows cross-compile pass; native GPU execution remains unverified
-until the synthetic marker-dispatch/readback test runs on DXR hardware. The
+checks, Windows cross-compilation and the Windows native marker-dispatch/readback
+probe pass. The probe emitted no missing-fixture skip; adapter identity, real-world
+rendering and RTX 5060 performance remain unverified. The
 backend-only Windows workflow compiles the synthetic DXIL fixture and tests this
 small crate; it does not build an installer or publish a release.
 
@@ -134,7 +135,10 @@ The proposed upstream HAL additions are in
 against `cinnabar-v30` commit `4c7793e345d56ca2cac6dbaf213edd7aa3dd6af9`.
 They add borrowed command-list and acceleration-storage accessors only; no
 existing signature changes. This patch is **not applied or compiled into the
-client**. Fork creation for the dependency was rejected by the connected GitHub
-integration with HTTP 403, so no upstream PR or dependency-pin update was made.
+client**. The implementation is pushed to `anabeatriz071/wgpu:native-dxr-interop`
+(commit `b3f0b5e`) with focused Windows validation. The GitHub integration rejected
+upstream PR creation with HTTP 403; no upstream PR or dependency-pin update was made.
+The review can be opened through
+[the upstream compare page](https://github.com/cinnabar-mc/wgpu/compare/cinnabar-v30...anabeatriz071:wgpu:native-dxr-interop?expand=1).
 The patch needs upstream review, compilation, native lifetime/barrier tests and
 merging before it can support the world-pass migration.
