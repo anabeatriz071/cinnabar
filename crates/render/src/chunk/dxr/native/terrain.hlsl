@@ -31,18 +31,18 @@ Hit trace(float3 origin, float3 direction, float maximum, bool first) {
     TraceRay(Scene, flags, 0xff, 0, 1, 0, ray, result);
     return result;
 }
-float visibility(float3 point, float3 direction, float maximum) { return trace(point, direction, maximum, true).kind == 0 ? 1.0 : 0.0; }
-float sunVisibility(float3 point) {
+float visibility(float3 positionWorld, float3 direction, float maximum) { return trace(positionWorld, direction, maximum, true).kind == 0 ? 1.0 : 0.0; }
+float sunVisibility(float3 positionWorld) {
     float3 sun = normalize(SunStrength.xyz);
     float3 axis = abs(sun.y) > 0.99 ? float3(1,0,0) : float3(0,1,0);
     float3 tangent = normalize(cross(sun, axis));
     float3 bitangent = cross(sun, tangent);
     float3 diagonal = (tangent + bitangent) * (RayLength.y * 0.5);
-    float a = visibility(point, normalize(sun + diagonal), RayLength.x);
-    float b = visibility(point, normalize(sun - diagonal), RayLength.x);
+    float a = visibility(positionWorld, normalize(sun + diagonal), RayLength.x);
+    float b = visibility(positionWorld, normalize(sun - diagonal), RayLength.x);
     if (a == b) return a;
     float3 other = (tangent - bitangent) * (RayLength.y * 0.5);
-    return (a + b + visibility(point, normalize(sun + other), RayLength.x) + visibility(point, normalize(sun - other), RayLength.x)) * 0.25;
+    return (a + b + visibility(positionWorld, normalize(sun + other), RayLength.x) + visibility(positionWorld, normalize(sun - other), RayLength.x)) * 0.25;
 }
 [shader("miss")] void Miss(inout Hit hit) { hit.kind = 0; }
 [shader("closesthit")] void ClosestHit(inout Hit hit, BuiltInTriangleIntersectionAttributes attributes) {
@@ -58,8 +58,8 @@ float sunVisibility(float3 point) {
     uint4 receiver = Receivers.Load4(index * 16);
     Hit hit = (Hit)0;
     if ((receiver.w & 0x80000000u) != 0) {
-        float3 point = asfloat(receiver.xyz);
-        float3 delta = point - EyeRadius.xyz;
+        float3 positionWorld = asfloat(receiver.xyz);
+        float3 delta = positionWorld - EyeRadius.xyz;
         float distance = length(delta);
         if (distance > 0.02 && distance < EyeRadius.w) hit = trace(EyeRadius.xyz, delta / distance, distance + 0.08, false);
     }
@@ -74,13 +74,13 @@ float sunVisibility(float3 point) {
     Hit reflection = (Hit)0;
     float3 reflectionDirection = 0;
     if ((receiver.w & 0x80000000u) != 0) {
-        float3 point = asfloat(receiver.xyz);
+        float3 positionWorld = asfloat(receiver.xyz);
         float4 mapped = asfloat(MaterialNormals.Load4(index * 32));
         float4 detail = asfloat(MaterialNormals.Load4(index * 32 + 16));
         float3 geometric = detail.xyz;
         float3 normal = normalize(mapped.xyz);
-        float3 origin = point + geometric * 0.025;
-        float distance = length(point - EyeRadius.xyz);
+        float3 origin = positionWorld + geometric * 0.025;
+        float distance = length(positionWorld - EyeRadius.xyz);
         float fade = 1 - smoothstep(EyeRadius.w * 0.75, EyeRadius.w, distance);
         if (Grid.w != 0 && dot(geometric, SunStrength.xyz) > 0) {
             sun = sunVisibility(origin);
@@ -90,8 +90,8 @@ float sunVisibility(float3 point) {
         float3 tangent = normalize(cross(geometric, axis));
         float3 bitangent = cross(geometric, tangent);
         float occlusion = 0;
-        [unroll] for (uint sample = 0; sample < 4; sample++) {
-            float3 ray = normalize(geometric * 0.8 + tangent * ((sample & 1) != 0 ? 0.6 : -0.6) + bitangent * ((sample & 2) != 0 ? 0.6 : -0.6));
+        [unroll] for (uint probe = 0; probe < 4; probe++) {
+            float3 ray = normalize(geometric * 0.8 + tangent * ((probe & 1) != 0 ? 0.6 : -0.6) + bitangent * ((probe & 2) != 0 ? 0.6 : -0.6));
             Hit hit = trace(origin, ray, 2, false);
             if (hit.kind != 0) occlusion += 1 - saturate(hit.distance * 0.5);
         }
@@ -99,7 +99,7 @@ float sunVisibility(float3 point) {
         uint evaluated = 0;
         [loop] for (uint light = 0; light < uint(RayLength.z); light++) {
             float4 position = asfloat(Lights.Load4(light * 32));
-            float3 delta = position.xyz - point;
+            float3 delta = position.xyz - positionWorld;
             float range = length(delta);
             if (range < 0.03 || range >= position.w || dot(normal, delta / range) <= 0) continue;
             float3 side = normalize(cross(delta / range, abs(delta.y / range) > 0.99 ? float3(1,0,0) : float3(0,1,0))) * 0.035;
@@ -109,7 +109,7 @@ float sunVisibility(float3 point) {
             if (++evaluated == 4) break;
         }
         if (detail.w * pow(1 - mapped.w, 2) > 0.025) {
-            float3 incoming = normalize(point - EyeRadius.xyz);
+            float3 incoming = normalize(positionWorld - EyeRadius.xyz);
             float3 reflected = reflect(incoming, normal);
             reflectionDirection = normalize(reflected + geometric * max(0.02 - dot(reflected, geometric), 0));
             reflection = trace(origin, reflectionDirection, RayLength.x, false);
@@ -133,21 +133,21 @@ float sunVisibility(float3 point) {
     float stepLength = lengthLimit / 6;
     [unroll] for (uint step = 0; step < 6; step++) {
         float distance = (float(step) + 0.5) * stepLength;
-        float3 point = EyeRadius.xyz + ray * distance;
+        float3 positionWorld = EyeRadius.xyz + ray * distance;
         float3 incident = 0;
         if (Grid.w != 0) {
             float cosine = dot(ray, normalize(SunStrength.xyz));
             float phase = 0.75 / pow(max(1.25 - cosine, 0.08), 1.5);
-            incident += Sky.rgb * SunStrength.w * phase * visibility(point, normalize(SunStrength.xyz), RayLength.x);
+            incident += Sky.rgb * SunStrength.w * phase * visibility(positionWorld, normalize(SunStrength.xyz), RayLength.x);
         }
         uint evaluated = 0;
         [loop] for (uint light = 0; light < uint(RayLength.z); light++) {
             float4 position = asfloat(Lights.Load4(light * 32));
             float4 colour = asfloat(Lights.Load4(light * 32 + 16));
-            float3 delta = position.xyz - point;
+            float3 delta = position.xyz - positionWorld;
             float range = length(delta);
             if (range < 0.08 || range >= position.w) continue;
-            incident += colour.rgb * colour.w * pow(1 - range / position.w, 2) * visibility(point, delta / range, range - 0.08);
+            incident += colour.rgb * colour.w * pow(1 - range / position.w, 2) * visibility(positionWorld, delta / range, range - 0.08);
             if (++evaluated == 2) break;
         }
         scattering += incident * Fog.rgb * exp(-Fog.w * distance) * Fog.w * stepLength * 0.5;
