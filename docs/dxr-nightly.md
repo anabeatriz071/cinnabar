@@ -91,9 +91,9 @@ Cargo fingerprints preserve unchanged crates while rebuilding changed inputs.
 ## RT pipeline migration status
 
 The client pins `anabeatriz071/wgpu:cinnabar-v30` at
-`a885ccbafe7cd5b3d2668c47124d1c584e662988`. This applies two borrowed DX12 HAL
-accessors to the exact former pin `a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5`;
-existing public APIs and renderer behavior are unchanged. All wgpu-family patches
+`0a632ff196d098525327489831447e88e84ff0a4`. This applies two borrowed DX12 HAL
+accessors and an empty-TLAS DX12 workaround to the exact former pin `a13a9d6dad54aeebc4d1445425ec1c3adbba2fd5`;
+existing public signatures and non-empty rendering behavior are unchanged. All wgpu-family patches
 share that revision and pass the existing release-branch pin guard. Development
 and validation use the owner's forks; an upstream PR is not a prerequisite.
 
@@ -107,6 +107,10 @@ This new bridge probe requires Windows DXR validation; missing fixtures are name
 skips and do not establish acceptance. If GitHub rejects dispatch because Actions
 is disabled, enable Actions in the fork's repository settings before running the
 backend check. This does not require starting an installer build.
+
+Empty DX12 scene builds use an inactive zeroed instance, preserving all-miss
+semantics while avoiding WARP's zero-instance divide-by-zero crash. The dependency
+lock preserves the existing Windows interface versions.
 
 Native recording uses a dedicated raw encoder. Resource transitions and result
 copies use separate tracked wgpu encoders, submitted in order on the same queue.
