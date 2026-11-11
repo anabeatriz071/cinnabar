@@ -128,3 +128,13 @@ for this replacement. Full GI, water transport and DLSS remain separate work.
 Installer builds are now manual while this migration is pending. The workflow creates a new
 `dxr-preview-<run>-<attempt>-<commit>` prerelease and never moves or overwrites
 `nightly-dxr`. Starting a build is deferred until the requested renderer is ready.
+
+The proposed upstream HAL additions are in
+[`patches/wgpu-native-dxr-interop.patch`](patches/wgpu-native-dxr-interop.patch),
+against `cinnabar-v30` commit `4c7793e345d56ca2cac6dbaf213edd7aa3dd6af9`.
+They add borrowed command-list and acceleration-storage accessors only; no
+existing signature changes. This patch is **not applied or compiled into the
+client**. Fork creation for the dependency was rejected by the connected GitHub
+integration with HTTP 403, so no upstream PR or dependency-pin update was made.
+The patch needs upstream review, compilation, native lifetime/barrier tests and
+merging before it can support the world-pass migration.
