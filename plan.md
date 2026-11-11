@@ -2259,8 +2259,12 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   shader tables and checked DispatchRays; CPU layout tests, Windows compilation
   and the native marker dispatch/readback pass. A wgpu-to-native TraceRay probe
   passes hits, misses and final-instance removal on Windows software DX12.
-  The game still uses inline queries. World-pass integration, PBR migration,
-  volumetric light shafts, area-light sampling and denoising remain incomplete.
+  Native deferred world passes are implemented and under Windows integration checks:
+  primary material hits, finite-sun shadows, four-ray AO, two-probe local shadows,
+  one-bounce metal reflections and half-grid volumetric light shafts. The old query
+  path is a compatibility fallback while native programs load or fail. PBR pack
+  material evaluation is shared across both paths. Temporal denoising, physically
+  sampled glossy reflection lobes and full path transport remain incomplete.
   RTX 5060 world acceptance is unverified. Installer publishing is manual and
   creates new version tags, preserving `nightly-dxr`.
 - Experimental Windows DX12 lighting uses the persisted Video DXR toggle (Off by

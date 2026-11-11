@@ -6,6 +6,7 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'crates/dxr-pipeline/**'
+      - 'crates/render/src/chunk/dxr/**'
       - 'packaging/windows/compile-rt-smoke.ps1'
       - '.github/workflows/rt-pipeline-check.yml'
   workflow_dispatch:
@@ -35,3 +36,40 @@ jobs:
       - name: Test native pipeline and shader tables
         # A named missing GPU fixture is not a dispatch pass or visual acceptance.
         run: cargo test --locked -p dxr-pipeline -- --nocapture
+
+  renderer:
+    name: Validate native game integration
+    runs-on: windows-2025
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_BUILD_DIR: '{workspace-root}/target'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: ./.github/actions/dxr-build-cache
+        id: cache
+        with:
+          lane: tests
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+      - name: Compile native terrain library
+        shell: pwsh
+        run: ./packaging/windows/compile-rt-smoke.ps1
+      - name: Check game and renderer compatibility
+        run: cargo check --locked --tests -p render -p cinnabar
+      - name: Test native deferred frame and material bindings
+        run: cargo test --locked -p render --lib chunk::dxr::native -- --nocapture
+      - uses: ./.github/actions/dxr-build-cache
+        with:
+          phase: save
+          lane: tests
+          key: ${{ steps.cache.outputs.key }}
+          matched-key: ${{ steps.cache.outputs.matched-key }}

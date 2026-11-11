@@ -22,6 +22,8 @@ use wgpu::util::DeviceExt;
 
 mod cache;
 mod geometry;
+#[cfg(windows)]
+mod native;
 mod pipeline;
 mod surfaces;
 use pipeline::{Frame, SUN_ANGULAR_RADIUS, create_pipeline};
@@ -37,7 +39,7 @@ const RAY_LENGTH: f32 = CASTER_RADIUS - RECEIVER_RADIUS;
 struct Shadows {
     sections: HashMap<Entity, Section>,
     ordered: Vec<Entity>,
-    scene: Option<wgpu::Tlas>,
+    scene: Option<Arc<wgpu::Tlas>>,
     surfaces: Option<surfaces::SceneSurfaces>,
     surface_quads: Option<Buffer>,
     surface_allocation_failed: bool,
@@ -69,6 +71,8 @@ struct Preparation<'w> {
 
 #[derive(bevy::ecs::schedule::SystemSet, Debug, Clone, Copy, Hash, PartialEq, Eq)]
 enum DxrPass {
+    #[cfg(windows)]
+    Native,
     Sunlight,
     Materials,
 }
@@ -124,6 +128,26 @@ pub(super) fn install(app: &mut App) {
             .before(crate::scene_target::ScenePass::Transparent),
         );
     });
+    #[cfg(windows)]
+    {
+        render.init_resource::<native::NativeTerrain>();
+        render.add_systems(
+            Render,
+            native::reset.in_set(RenderSystems::PrepareResources),
+        );
+        render.add_systems(Render, native::retain.in_set(RenderSystems::Cleanup));
+        render.world_mut().schedule_scope(Core3d, |_, schedule| {
+            schedule.add_systems(
+                native::record::composite
+                    .in_set(Core3dSystems::MainPass)
+                    .in_set(DxrPass::Native)
+                    .after(crate::scene_target::ScenePass::Opaque)
+                    .after(super::GpuCullLateLabel)
+                    .after(crate::entity_shadow_render::EntityShadowLabel)
+                    .before(DxrPass::Sunlight),
+            );
+        });
+    }
     install_preparation(render);
     app.add_systems(Last, super::admit_depth_sampling);
     app.insert_resource(render_scene::terrain_shadows::DxrTerrainShadowsSupported(
@@ -382,7 +406,7 @@ fn prepare(
     shadows.surfaces = shadows.surface_quads.as_ref().map(|buffer| {
         surfaces::SceneSurfaces::new(gpu, &shadows.ordered, &shadows.sections, buffer)
     });
-    shadows.scene = Some(scene);
+    shadows.scene = Some(Arc::new(scene));
 }
 
 /// Gives terrain most busy frames while guaranteeing bounded shadow progress during streaming.
@@ -482,6 +506,10 @@ fn composite(world: &World, query: ViewQuery<ShadowView>, mut context: RenderCon
         return Ok(());
     }
     let entity = query.entity();
+    #[cfg(windows)]
+    if native::encoded(world, entity) {
+        return Ok(());
+    }
     let (camera, view, target, depth, color, resolution, shader_pack) = query.into_inner();
     let Some(shadows) = world.get_resource::<Shadows>() else {
         return Ok(());

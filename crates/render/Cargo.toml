@@ -14,6 +14,7 @@ reads = [
     "crates/assets/data/block-registry-v1001.bin",
     "crates/assets/data/block-registry-v2225.bin",
     "packaging/windows/dxc.json",
+    "packaging/windows/compile-rt-smoke.ps1",
 ]
 
 [features]
@@ -70,6 +71,8 @@ objc2-quartz-core = { version = "0.3", default-features = false, features = ["st
 objc2-metal = { version = "0.3", default-features = false, features = ["std", "MTLCommandBuffer", "objc2-core-foundation"] }
 
 [target.'cfg(windows)'.dependencies]
+dxr-pipeline = { path = "../dxr-pipeline" }
+windows = { version = "0.62", default-features = false, features = ["Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D", "Win32_Graphics_Dxgi_Common"] }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading"] }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]

@@ -28,11 +28,13 @@ fn light(position: [f32; 3], emission: u8, colour: [f32; 3]) -> DxrLocalLight {
 }
 
 /// Source identifiers and provisional linear colours for the first local-light set.
-const EMITTERS: [(&str, [f32; 3]); 4] = [
+const EMITTERS: [(&str, [f32; 3]); 6] = [
     ("minecraft:torch", [1.0, 0.65, 0.32]),
     ("minecraft:lantern", [1.0, 0.65, 0.32]),
     ("minecraft:soul_torch", [0.25, 0.75, 1.0]),
     ("minecraft:soul_lantern", [0.25, 0.75, 1.0]),
+    ("minecraft:redstone_torch", [1.0, 0.08, 0.03]),
+    ("minecraft:end_rod", [0.85, 0.9, 1.0]),
 ];
 
 /// Reads only changed palettes, bounded to two section scans per frame; held lights update every frame.

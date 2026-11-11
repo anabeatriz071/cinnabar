@@ -178,6 +178,28 @@ impl Pipeline {
         })
     }
 
+    /// Selects another ray-generation export from this state object without recompilation.
+    pub fn for_raygen(&self, name: &str) -> Result<Self> {
+        let name = wide(name)?;
+        let properties = self.state.cast::<ID3D12StateObjectProperties>()?;
+        // SAFETY: The terminated name and state object remain live for this identifier lookup.
+        let identifier = unsafe { properties.GetShaderIdentifier(PCWSTR(name.as_ptr())) };
+        if identifier.is_null() {
+            return Err(invalid("unknown ray-generation export"));
+        }
+        let mut records = self.records.clone();
+        // SAFETY: DXR identifiers have the SDK-checked size; records always hold one raygen entry.
+        records[..IDENTIFIER_BYTES as usize].copy_from_slice(unsafe {
+            std::slice::from_raw_parts(identifier.cast(), IDENTIFIER_BYTES as usize)
+        });
+        Ok(Self {
+            state: self.state.clone(),
+            root: self.root.clone(),
+            records,
+            layout: self.layout,
+        })
+    }
+
     pub fn layout(&self) -> ShaderTableLayout {
         self.layout
     }

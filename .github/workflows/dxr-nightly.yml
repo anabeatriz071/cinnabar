@@ -49,6 +49,7 @@ jobs:
         run: cargo fmt --check
       - name: Build and run the DXR regression tests together
         run: |
+          pwsh -NoProfile -File packaging/windows/compile-rt-smoke.ps1
           pwsh -NoProfile -File packaging/windows/fetch-dxc.ps1 -Out .
           # One feature graph avoids recompiling dependencies for each package separately.
           # The release job compiles the application; these selected targets compile its regressions.
@@ -99,6 +100,9 @@ jobs:
           Add-Content $env:GITHUB_PATH $magick.FullName
           Add-Content $env:GITHUB_PATH "$env:USERPROFILE\.dotnet\tools"
           Add-Content $env:GITHUB_PATH "$env:ProgramData\chocolatey\bin"
+      - name: Compile native terrain DXIL
+        shell: pwsh
+        run: ./packaging/windows/compile-rt-smoke.ps1
       - name: Build and package the selected commit
         run: |
           make package-binaries PACKAGE_CARGO_FLAGS=--timings

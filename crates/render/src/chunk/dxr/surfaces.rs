@@ -86,9 +86,9 @@ impl SceneSurfaces {
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct LightGpu {
-    position_radius: [f32; 4],
-    colour_intensity: [f32; 4],
+pub(super) struct LightGpu {
+    pub(super) position_radius: [f32; 4],
+    pub(super) colour_intensity: [f32; 4],
 }
 
 /// Records PBR/metal and local-light compositing separately from the sunlight shadow pass.
@@ -108,6 +108,10 @@ pub(super) fn composite(
         return Ok(());
     }
     let entity = query.entity();
+    #[cfg(windows)]
+    if native::encoded(world, entity) {
+        return Ok(());
+    }
     let (camera, view, target, depth, colour, resolution, shader_pack) = query.into_inner();
     if shader_pack
         || !depth
@@ -319,7 +323,12 @@ pub(super) fn composite(
 }
 
 pub(super) fn shader_source() -> String {
-    include_str!("surfaces.wgsl")
+    material_source(include_str!("surfaces.wgsl"))
+}
+
+pub(super) fn material_source(source: &str) -> String {
+    source
+        .replace("// DXR_MATERIAL_FUNCTIONS", include_str!("material.wgsl"))
         .replace(
             "DXR_LAYER_MASK",
             &format!("{}u", assets::TEXTURE_LAYER_MASK),

@@ -7835,6 +7835,7 @@ dependencies = [
  "block-transform",
  "bytemuck",
  "criterion",
+ "dxr-pipeline",
  "env-compat",
  "far-terrain",
  "glam",
@@ -7866,6 +7867,7 @@ dependencies = [
  "web-time",
  "wesl",
  "wgpu",
+ "windows 0.62.2",
  "windows-sys 0.61.2",
  "world",
 ]

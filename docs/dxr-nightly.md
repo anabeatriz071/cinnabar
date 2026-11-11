@@ -122,13 +122,26 @@ The pipeline and all referenced buffers/acceleration structures remain alive thr
 submission completion. Native handles come from borrowed HAL accessors, without
 private struct reinterpretation or unsynchronized external queue submissions.
 
-The in-game renderer still uses inline ray queries. World-pass integration, PBR
-migration, shadowed volumetric light shafts, stochastic area-light shadows and
-accumulation/denoising remain incomplete. GI, water transport and DLSS are separate
-work. The native marker probe alone does not establish terrain rendering or RTX
-5060 visual/performance acceptance.
+Native deferred world passes now reconstruct raster receivers, trace primary
+material hits, evaluate active-pack PBR textures, and dispatch secondary lighting
+and volumetric rays. Native-ready views skip both inline-query composites. Program
+creation runs off the frame thread; the existing renderer remains a compatibility
+fallback until it succeeds. Pipeline state, SBTs, TLAS and intermediate buffers are
+retained through a completion callback registered after Bevy submits the frame.
 
-The backend-only Windows workflow compiles DXIL fixtures and tests this small crate;
+The provisional lighting model uses two to four stable finite-sun probes, four AO
+probes, two visibility probes for each of four eligible point lights, and one metal
+reflection hit. Volumetric beams march six steps at half the intermediate grid and
+use depth-aware upsampling. Fog colour and density follow the current atmosphere;
+this is not full Bedrock media-coefficient parity. Intermediate allocations shrink
+above device storage-binding limits. Authored colour, normal and MER evaluation is
+shared with the compatibility path. Roughness filters reflection texture detail;
+physically sampled glossy geometry and temporal denoising remain incomplete.
+GI, water transport and DLSS are separate work. Windows integration and synthetic
+frame verification are in progress; RTX 5060 world visuals and performance remain
+unverified.
+
+The validation Windows workflow compiles DXIL fixtures, checks the game and tests the native frame;
 it does not build an installer or publish a release. Installer builds remain manual
 while migration is pending. They create new `dxr-preview-<run>-<attempt>-<commit>`
 prereleases and never move or overwrite `nightly-dxr`.

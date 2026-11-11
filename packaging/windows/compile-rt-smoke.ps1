@@ -26,3 +26,15 @@ if ($LASTEXITCODE -ne 0) { throw "Native DXR fixture compilation failed ($LASTEX
 
 & (Join-Path $compiler "dxc.exe") -T lib_6_3 -WX -Fo (Join-Path $out "native-trace.dxil") (Join-Path $Root "crates/dxr-pipeline/tests/trace.hlsl")
 if ($LASTEXITCODE -ne 0) { throw "Native TraceRay fixture compilation failed ($LASTEXITCODE)" }
+
+# Keep identical DXIL mtimes stable so restoring the Cargo cache does not force a rebuild.
+$terrain = Join-Path $Root "target/native-dxr/terrain.dxil"
+New-Item -ItemType Directory -Force (Split-Path $terrain) | Out-Null
+$temporary = "$terrain.tmp"
+& (Join-Path $compiler "dxc.exe") -T lib_6_3 -WX -Fo $temporary (Join-Path $Root "crates/render/src/chunk/dxr/native/terrain.hlsl")
+if ($LASTEXITCODE -ne 0) { throw "Native terrain library compilation failed ($LASTEXITCODE)" }
+if (-not (Test-Path $terrain) -or (Get-FileHash $temporary).Hash -ne (Get-FileHash $terrain).Hash) {
+    Move-Item -Force $temporary $terrain
+} else { Remove-Item $temporary }
+if ($env:GITHUB_ENV) { "CINNABAR_NATIVE_DXR_DXIL=$terrain" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
+$env:CINNABAR_NATIVE_DXR_DXIL = $terrain
