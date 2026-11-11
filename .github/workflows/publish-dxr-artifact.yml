@@ -1,0 +1,101 @@
+name: Publish verified DXR artifact
+on:
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: Completed DXR Windows build run ID
+        required: true
+        type: string
+        default: '43098881832'
+  push:
+    branches: [dxr-terrain-shadows]
+    paths: ['.github/workflows/publish-dxr-artifact.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: dxr-artifact-publication-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.event.repository.fork && github.ref == 'refs/heads/dxr-terrain-shadows'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_RUN: ${{ inputs.source_run || '43098881832' }}
+    steps:
+      - name: Verify completed build and regression steps
+        id: source
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          def api(path):
+              return json.loads(subprocess.check_output(['gh','api',f'repos/{os.environ["GH_REPO"]}/{path}'],text=True))
+          run_id = int(os.environ['SOURCE_RUN'])
+          run = api(f'actions/runs/{run_id}')
+          assert run['status'] == 'completed', 'Source build is still running'
+          assert run['head_branch'] == 'dxr-terrain-shadows', 'Wrong source branch'
+          assert run['path'] == '.github/workflows/dxr-nightly.yml', 'Wrong build workflow'
+          assert re.fullmatch('[0-9a-f]{40}',run['head_sha']), 'Invalid source SHA'
+          jobs = api(f'actions/runs/{run_id}/jobs?per_page=100')['jobs']
+          validation = next(j for j in jobs if j['name'] == 'Validate Windows DXR')
+          package = next(j for j in jobs if j['name'] == 'Package Windows nightly')
+          assert package['conclusion'] == 'success', 'Packaging did not pass'
+          steps = {s['name']:s for s in validation['steps']}
+          for name in ['Check formatting','Compile native terrain DXIL for tests','Build and run the DXR regression tests together']:
+              assert steps[name]['conclusion'] == 'success', f'Required validation failed: {name}'
+          failed = {s['name'] for s in validation['steps'] if s['conclusion'] not in ('success','skipped')}
+          assert failed <= {'Save test build cache'}, f'Non-cache validation failure: {failed}'
+          tag = f'dxr-preview-{run["run_number"]}-{run["run_attempt"]}-{run["head_sha"][:12]}'
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
+              out.write(f'sha={run["head_sha"]}\ntag={tag}\nrun={run_id}\n')
+          print(f'Verified tests and package for {run["head_sha"]}; only optional cache failure allowed')
+          PY
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: dxr-windows-preview
+          run-id: ${{ steps.source.outputs.run }}
+          github-token: ${{ github.token }}
+          path: dist
+      - name: Verify payload checksums and source identity
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          root = Path('dist')
+          expected = {'build.txt','Cinnabar-DXR-preview-windows-x64-setup.exe','Cinnabar-DXR-preview-windows-x64.zip'}
+          manifest = {}
+          for line in (root/'SHA256SUMS.txt').read_text(encoding='utf-8-sig').splitlines():
+              digest,name = line.split(None,1)
+              name = name.strip()
+              assert name in expected and name not in manifest, 'Unexpected or duplicate payload file'
+              assert hashlib.sha256((root/name).read_bytes()).hexdigest() == digest, f'Checksum mismatch: {name}'
+              manifest[name] = digest
+          assert set(manifest) == expected, 'Incomplete payload'
+          metadata = dict(line.split('=',1) for line in (root/'build.txt').read_text(encoding='utf-8-sig').splitlines())
+          assert metadata['commit'] == os.environ['SOURCE_SHA'], 'Artifact source SHA mismatch'
+          assert metadata['run'] == f'https://github.com/{os.environ["GH_REPO"]}/actions/runs/{int(os.environ["SOURCE_RUN"])}', 'Artifact run mismatch'
+          print('Installer, portable ZIP and source metadata checksums verified')
+          PY
+      - name: Publish separate versioned preview
+        env:
+          TAG: ${{ steps.source.outputs.tag }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        shell: bash
+        run: |
+          previous_nightly=$(gh api "repos/$GH_REPO/git/ref/tags/nightly-dxr" --jq '.object.sha')
+          cp docs/dxr-nightly.md "$RUNNER_TEMP/dxr-release-notes.md"
+          printf '\nSource commit: `%s`\n\nBuilt and validated in https://github.com/%s/actions/runs/%s. Downloads were reused without recompilation.\n' "$SOURCE_SHA" "$GH_REPO" "$SOURCE_RUN" >> "$RUNNER_TEMP/dxr-release-notes.md"
+          gh release create "$TAG" dist/* --target "$SOURCE_SHA" --title "DXR preview — native RT pipeline" --notes-file "$RUNNER_TEMP/dxr-release-notes.md" --prerelease --latest=false
+          current_nightly=$(gh api "repos/$GH_REPO/git/ref/tags/nightly-dxr" --jq '.object.sha')
+          test "$previous_nightly" = "$current_nightly"
+          printf 'Published https://github.com/%s/releases/tag/%s; rolling nightly unchanged.\n' "$GH_REPO" "$TAG"
