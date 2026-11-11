@@ -71,7 +71,8 @@ jobs:
         id: frame
         if: steps.check.outcome == 'success'
         continue-on-error: true
-        run: cargo test --locked -p render --lib chunk::dxr::native -- --nocapture
+        # Match the client check feature graph and also exercise placed/held/MER light regressions.
+        run: cargo test --locked -p render -p cinnabar --lib dxr -- --nocapture
       - uses: ./.github/actions/dxr-build-cache
         with:
           phase: save

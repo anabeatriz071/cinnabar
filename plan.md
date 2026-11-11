@@ -2259,7 +2259,8 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   shader tables and checked DispatchRays; CPU layout tests, Windows compilation
   and the native marker dispatch/readback pass. A wgpu-to-native TraceRay probe
   passes hits, misses and final-instance removal on Windows software DX12.
-  Native deferred world passes are implemented and under Windows integration checks:
+  Native deferred world passes are implemented; Windows client/test compilation
+  and the native frame CI target pass:
   primary material hits, finite-sun shadows, four-ray AO, two-probe local shadows,
   one-bounce metal reflections and half-grid volumetric light shafts. The old query
   path is a compatibility fallback while native programs load or fail. PBR pack

@@ -1,7 +1,7 @@
-# DXR Windows nightly
+# Native DXR Windows preview
 
-Experimental opaque-terrain sunlight shadows, PBR materials, metal reflections,
-and placed/held torch and lantern lighting. Full Bedrock RTX path tracing,
+Experimental native DXR terrain shadows, ambient occlusion, PBR materials, metal
+reflections, volumetric light beams and placed/held block lighting. Full Bedrock RTX path tracing,
 indirect light bounces, non-cube/cutout ray geometry, and actor/water receivers
 remain incomplete.
 
@@ -11,7 +11,8 @@ the resource pack after EULA acceptance. Keep automatic updates Off under Update
 while testing this fork; the upstream updater does not publish these builds.
 
 Enable **Settings → Video → DXR Lighting (Experimental)**. It defaults to Off and
-requires Windows, DirectX 12, the bundled DXC and DXR Tier 1.1 inline ray queries.
+requires Windows, DirectX 12, the bundled DXC and a DXR-capable adapter.
+The native path uses `DispatchRays`, ray-generation, hit and miss shaders.
 Keep Java shader packs Off. The older saved `dxr_terrain_shadows` preference remains
 compatible. The legacy Enhanced renderer remains disabled.
 
@@ -45,7 +46,7 @@ geometry within that cache. Misses use an approximation of the current sky colou
 Roughness controls reflection weight and texture mip detail; geometry reflections
 are not yet filtered into smooth rough-surface lobes.
 
-Placed torches, lanterns, soul torches and soul lanterns publish local lights from
+Placed torches, lanterns, soul variants, redstone torches and end rods publish local lights from
 actual block states. Both of the local player's hands can emit, including when a
 server omits the held block-runtime field. Held emitters use approximate hand
 anchors, not animated model bones. Other players' held lights are not implemented.
@@ -58,7 +59,8 @@ prioritizes nearby sections. Up to 32 lights are retained, with both hands first
 at most four eligible lights are evaluated per shaded sample. Shadows use opaque
 terrain occlusion, so fences, leaves, lantern meshes and actors are not blockers in
 this prototype. Terrain within the 32-block receiver region gets these effects;
-models, grass, water and actors keep their existing shading.
+PBR and reflection receivers must match cached opaque cube geometry; models, grass,
+water and actors retain their native materials.
 
 Sunlight uses a stable finite-sun pattern: two rays per shaded sample, up to four at
 mixed edges. Near-tangent faces fade their extra shadow darkening; other sun-facing
@@ -77,7 +79,9 @@ metal reflection even when it is outside the screen.
 
 Place and break a torch and lantern in a dark area. Hold each in the main hand and
 offhand, walk, switch to an unlit item, and leave/rejoin the world. Verify there are
-no leftover lights. Also check soul variants. Record the source commit, resolution,
+no leftover lights. Also check soul variants, redstone torches and end rods. With
+an emissive pack, verify coloured light reaches a neighbouring pale block. Stand
+behind an overhang or among columns and check that the light beams follow openings. Record the source commit, resolution,
 anti-aliasing, FPS and GPU timings. More ray work, especially with MSAA, can reduce
 FPS; this batch has no RTX 5060 visual/performance acceptance yet.
 
@@ -142,11 +146,11 @@ torches and end rods. Active-pack MER emission adds face-offset lights coloured 
 the final albedo mip. Dense emissive sections retain 32 representative face lights
 nearest their centre; the frame still selects 32 total sources. This bounded direct
 lighting approximation is not emissive-pixel path transport or GI.
-GI, water transport and DLSS are separate work. Windows integration and synthetic
-frame verification are in progress; RTX 5060 world visuals and performance remain
-unverified.
+GI, water transport and DLSS are separate work. Windows client/test compilation and the synthetic native-frame CI target passed
+([run 42951181168](https://github.com/anabeatriz071/cinnabar/actions/runs/42951181168)).
+RTX 5060 world visuals and performance remain unverified.
 
 The validation Windows workflow compiles DXIL fixtures, checks the game and tests the native frame;
 it does not build an installer or publish a release. Installer builds remain manual
-while migration is pending. They create new `dxr-preview-<run>-<attempt>-<commit>`
+for explicit test releases. They create new `dxr-preview-<run>-<attempt>-<commit>`
 prereleases and never move or overwrite `nightly-dxr`.
