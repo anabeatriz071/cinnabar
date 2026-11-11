@@ -18,16 +18,34 @@ fn dxr_native_trace_hits_misses_and_clears_removed_wgpu_instance() {
     };
     let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
     descriptor.backends = wgpu::Backends::DX12;
-    descriptor.backend_options.dx12.shader_compiler = wgpu::Dx12Compiler::default_dynamic_dxc();
+    let compiler = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.local/dxr/compiler/dxcompiler.dll");
+    let Ok(compiler) = compiler.canonicalize() else {
+        eprintln!(
+            "missing fixture: verified DXC library at {}",
+            compiler.display()
+        );
+        return;
+    };
+    descriptor.backend_options.dx12.shader_compiler = wgpu::Dx12Compiler::DynamicDxc {
+        dxc_path: compiler.to_string_lossy().into_owned(),
+    };
     let instance = wgpu::Instance::new(descriptor);
-    let Some(adapter) = pollster::block_on(instance.enumerate_adapters(wgpu::Backends::DX12))
-        .into_iter()
-        .find(|adapter| {
+    let adapters = pollster::block_on(instance.enumerate_adapters(wgpu::Backends::DX12));
+    for adapter in &adapters {
+        eprintln!(
+            "DX12 interop candidate: {:?}; AS admission: {}",
+            adapter.get_info(),
             adapter
                 .features()
                 .contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY)
-        })
-    else {
+        );
+    }
+    let Some(adapter) = adapters.into_iter().find(|adapter| {
+        adapter
+            .features()
+            .contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY)
+    }) else {
         eprintln!("missing fixture: DX12 adapter with acceleration structure support");
         return;
     };
