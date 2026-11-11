@@ -1,10 +1,13 @@
-name: DXR Windows nightly
+name: DXR Windows preview
 
 on:
+  push:
+    branches: [dxr-terrain-shadows]
+    paths: ['.github/workflows/dxr-nightly.yml']
   workflow_dispatch:
 
 concurrency:
-  group: dxr-windows-nightly
+  group: dxr-versioned-preview-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
