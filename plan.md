@@ -2258,7 +2258,7 @@ acceptance, including device-loss recovery on affected hardware, remains incompl
   and behavior remain intact. The independent backend implements state objects,
   shader tables and checked DispatchRays; CPU layout tests, Windows compilation
   and the native marker dispatch/readback pass. A wgpu-to-native TraceRay probe
-  covers hits, misses and instance removal; its Windows acceptance is pending.
+  passes hits, misses and final-instance removal on Windows software DX12.
   The game still uses inline queries. World-pass integration, PBR migration,
   volumetric light shafts, area-light sampling and denoising remain incomplete.
   RTX 5060 world acceptance is unverified. Installer publishing is manual and

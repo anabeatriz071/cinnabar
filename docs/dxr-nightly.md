@@ -103,8 +103,10 @@ limits and `DispatchRays`. Windows cross-compilation, CPU layout tests and the
 native marker-dispatch/readback probe pass. The wgpu interoperability probe builds
 an acceleration structure through the public wgpu API, traces a hit and miss through
 native HLSL `TraceRay`, then removes the instance and checks that both rays miss.
-This new bridge probe requires Windows DXR validation; missing fixtures are named
-skips and do not establish acceptance. If GitHub rejects dispatch because Actions
+The bridge probe passes on Windows 2025 using Microsoft Basic Render Driver
+10.0.26100.33648 (software DX12): hit/miss before removal, then two misses after
+removing the final instance. This does not establish RTX 5060 frame performance
+or in-game visual acceptance. Missing fixtures remain named skips, not passes. If GitHub rejects dispatch because Actions
 is disabled, enable Actions in the fork's repository settings before running the
 backend check. This does not require starting an installer build.
 
