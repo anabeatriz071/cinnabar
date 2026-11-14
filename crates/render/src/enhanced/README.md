@@ -28,8 +28,10 @@ It does not change mesh generation, geometry arenas or upload budgets. Unknown
 materials remain ordinary surfaces. Shared material IDs conservatively combine
 classes, so resource packs need native inspection.
 
-Default target: two 1024-square cascades over 96 blocks, half-resolution shafts,
-20 SSR steps with five refinement steps. These are quality choices, not measured
+Default target: three 2048-square cascades over 96 blocks with a 3x3 tent PCF and
+blended cascade seams; half-resolution shafts with 24 march steps, each sampling the
+finest containing cascade, and a depth-aware 3x3 upsample; 20 SSR steps with five
+refinement steps. These are quality choices, not measured
 performance claims. GPU/CPU diagnostic spans use Bevy's recorder when installed;
 Bevy 0.18 GPU diagnostics require Vulkan/DX12 timestamp support; its Metal
 recorder reports CPU times only. Use Xcode GPU capture for Metal GPU cost.

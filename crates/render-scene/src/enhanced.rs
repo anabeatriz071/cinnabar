@@ -19,8 +19,8 @@ impl Default for EnhancedRendering {
     fn default() -> Self {
         Self {
             shadows: true,
-            shadow_resolution: 1024,
-            shadow_cascades: 2,
+            shadow_resolution: 2048,
+            shadow_cascades: MAX_SHADOW_CASCADES,
             shadow_distance: 96.0,
             bloom: true,
             light_shafts: true,

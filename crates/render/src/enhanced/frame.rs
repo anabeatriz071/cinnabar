@@ -452,6 +452,26 @@ mod tests {
         assert_eq!(frame.flags.z, settings.shadow_resolution);
     }
 
+    /// Default shadows resolve at least eight texels per block even in the far cascade.
+    #[test]
+    fn default_far_cascade_resolves_block_detail() {
+        let inputs = ViewInputs {
+            clip_from_world: Mat4::IDENTITY,
+            world_from_clip: Mat4::IDENTITY,
+            camera: Vec3::new(0.0, 64.0, 0.0),
+            forward: Vec3::NEG_Z,
+            slope: SLOPE,
+            near: 0.1,
+            viewport: [1920, 1080],
+            seconds: 0.0,
+        };
+        let atmosphere = AtmosphereFrame::from_bedrock_time(6_000.0, 0.0, 0.0);
+        let (frame, fits) = build_frame(&inputs, &EnhancedRendering::default(), &atmosphere);
+        assert_eq!(frame.flags.y, MAX_SHADOW_CASCADES);
+        let far = fits.last().expect("at least one cascade");
+        assert!(1.0 / far.texel_world >= 8.0, "{} texels per block", 1.0 / far.texel_world);
+    }
+
     #[test]
     fn frame_disables_shadow_sampling_when_shadows_are_off() {
         let inputs = ViewInputs {

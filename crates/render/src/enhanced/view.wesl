@@ -49,28 +49,61 @@ fn waved_water_position(world: vec3<f32>, top_surface: bool) -> vec3<f32> {
     return world + vec3(0.0, water_surface_offset(world, enhanced_frame.camera_time.w), 0.0);
 }
 
-// Rotated Vogel-disk PCF over the hardware 2x2 comparison filter.
-fn filtered_shadow(uv: vec2<f32>, depth: f32, cascade: u32, noise: f32) -> f32 {
+// Fraction of a cascade's half-width over which it hands over to the next cascade.
+const CASCADE_BLEND_BAND: f32 = 0.08;
+
+// 3x3 tent PCF: nine bilinear comparison taps one texel apart, weighted 1-2-1,
+// give a smooth penumbra without per-pixel noise (there is no temporal filter).
+fn filtered_shadow(uv: vec2<f32>, depth: f32, cascade: u32) -> f32 {
     let texel = 1.0 / f32(max(enhanced_frame.flags.z, 1u));
-    let rotation = noise * 6.2831853;
     var sum = 0.0;
-    for (var tap = 0u; tap < SHADOW_TAPS; tap += 1u) {
-        let radius = sqrt((f32(tap) + 0.5) / f32(SHADOW_TAPS)) * 1.75 * texel;
-        let angle = f32(tap) * 2.3999632 + rotation;
-        let offset = vec2(cos(angle), sin(angle)) * radius;
-        sum += textureSampleCompareLevel(
-            enhanced_shadow_map,
-            enhanced_shadow_sampler,
-            uv + offset,
-            i32(cascade),
-            depth,
-        );
+    for (var y = -1; y <= 1; y += 1) {
+        for (var x = -1; x <= 1; x += 1) {
+            let weight = (2.0 - abs(f32(x))) * (2.0 - abs(f32(y)));
+            sum += weight * textureSampleCompareLevel(
+                enhanced_shadow_map,
+                enhanced_shadow_sampler,
+                uv + vec2(f32(x), f32(y)) * texel,
+                i32(cascade),
+                depth,
+            );
+        }
     }
-    return sum / f32(SHADOW_TAPS);
+    return sum / 16.0;
 }
 
-// Select a containing cascade and fade its PCF visibility at the far edge.
-fn shadow_visibility(world: vec3<f32>, normal: vec3<f32>, pixel: vec2<f32>) -> f32 {
+struct CascadeSample {
+    visibility: f32,
+    // 0 well inside the cascade, rising to 1 at its usable edge.
+    edge: f32,
+    inside: bool,
+}
+
+// Filtered visibility of `world` in one cascade. `normal` faces the light and
+// `grazing` is 1 - |N.L|; both scale the receiver offsets that prevent acne.
+fn sample_cascade(world: vec3<f32>, normal: vec3<f32>, grazing: f32, cascade: u32) -> CascadeSample {
+    var result: CascadeSample;
+    let texel = enhanced_frame.cascade_texel[cascade];
+    let offset = normal * texel * (0.75 + 1.25 * grazing);
+    let clip = enhanced_frame.cascade_clip_from_world[cascade] * vec4(world + offset, 1.0);
+    let ndc = clip.xyz / clip.w;
+    let uv = vec2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    // The tent kernel reaches two texels, bilinear footprint included.
+    let margin = 2.0 / f32(max(enhanced_frame.flags.z, 1u));
+    let extent = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+    result.inside = extent > margin && ndc.z > 0.0 && ndc.z < 1.0;
+    if (!result.inside) {
+        return result;
+    }
+    let bias = texel * (0.35 + 0.65 * grazing) * enhanced_frame.cascade_depth_scale[cascade];
+    result.visibility = filtered_shadow(uv, ndc.z - bias, cascade);
+    result.edge = 1.0 - smoothstep(margin, margin + CASCADE_BLEND_BAND, extent);
+    return result;
+}
+
+// Visibility from the finest containing cascade, blended into the next one near
+// its edge so cascade seams do not show, and faded out at the shadow distance.
+fn shadow_visibility(world: vec3<f32>, normal: vec3<f32>) -> f32 {
     if ((enhanced_frame.flags.x & FEATURE_SHADOWS) == 0u) {
         return 1.0;
     }
@@ -79,20 +112,25 @@ fn shadow_visibility(world: vec3<f32>, normal: vec3<f32>, pixel: vec2<f32>) -> f
     if (camera_distance >= fade_distance) {
         return 1.0;
     }
-    let grazing = 1.0 - clamp(dot(normal, enhanced_frame.light_direction.xyz), 0.0, 1.0);
-    let margin = 4.0 / f32(max(enhanced_frame.flags.z, 1u));
-    let noise = interleaved_gradient_noise(pixel);
-    for (var cascade = 0u; cascade < enhanced_frame.flags.y; cascade += 1u) {
-        let texel = enhanced_frame.cascade_texel[cascade];
-        let offset = normal * texel * (1.5 + 2.5 * grazing);
-        let clip = enhanced_frame.cascade_clip_from_world[cascade] * vec4(world + offset, 1.0);
-        let ndc = clip.xyz / clip.w;
-        let uv = vec2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
-        if (all(uv > vec2(margin)) && all(uv < vec2(1.0 - margin)) && ndc.z > 0.0 && ndc.z < 1.0) {
-            let bias = texel * 0.5 * enhanced_frame.cascade_depth_scale[cascade];
-            let visibility = filtered_shadow(uv, ndc.z - bias, cascade, noise);
-            return mix(visibility, 1.0, smoothstep(fade_distance * 0.8, fade_distance, camera_distance));
+    let facing = dot(normal, enhanced_frame.light_direction.xyz);
+    // Two-sided foliage is lit from behind, so offset back faces toward the light too.
+    let toward_light = select(normal, -normal, facing < 0.0);
+    let grazing = 1.0 - abs(facing);
+    let fade = smoothstep(fade_distance * 0.8, fade_distance, camera_distance);
+    let count = enhanced_frame.flags.y;
+    for (var cascade = 0u; cascade < count; cascade += 1u) {
+        let near = sample_cascade(world, toward_light, grazing, cascade);
+        if (!near.inside) {
+            continue;
         }
+        var visibility = near.visibility;
+        if (near.edge > 0.0 && cascade + 1u < count) {
+            let far = sample_cascade(world, toward_light, grazing, cascade + 1u);
+            if (far.inside) {
+                visibility = mix(visibility, far.visibility, near.edge);
+            }
+        }
+        return mix(visibility, 1.0, fade);
     }
     return 1.0;
 }
@@ -113,7 +151,6 @@ fn shade_surface(
     albedo: vec3<f32>,
     normal: vec3<f32>,
     world: vec3<f32>,
-    pixel: vec2<f32>,
     lighting: vec3<f32>,
     sky_light: f32,
     ambient_occlusion: f32,
@@ -128,7 +165,7 @@ fn shade_surface(
     let sky_gate = smoothstep(0.25, 0.8, sky_light);
     var shadow = 0.0;
     if (diffuse > 0.0 && sky_gate > 0.0) {
-        shadow = shadow_visibility(world, normal, pixel);
+        shadow = shadow_visibility(world, normal);
     }
     let direct = enhanced_frame.light_colour.rgb * enhanced_frame.light_direction.w
         * diffuse * shadow * sky_gate;
@@ -230,7 +267,7 @@ fn shade_water(
     let to_camera = enhanced_frame.camera_time.xyz - world;
     let above = dot(to_camera, face_normal) > 0.0;
     if ((enhanced_frame.flags.x & FEATURE_WATER) == 0u || face_normal.y < 0.5 || !above) {
-        let lit = shade_surface(base, face_normal, world, frag.xy, lighting, sky_light,
+        let lit = shade_surface(base, face_normal, world, lighting, sky_light,
             ambient_occlusion, 0u);
         return vec4(lit, alpha);
     }
@@ -249,7 +286,7 @@ fn shade_water(
     let half_vector = normalize(enhanced_frame.light_direction.xyz + eye);
     let glint = pow(max(dot(normal, half_vector), 0.0), 220.0) * 6.0
         * enhanced_frame.light_direction.w * sky_gate
-        * shadow_visibility(world, face_normal, frag.xy);
+        * shadow_visibility(world, face_normal);
     let near = enhanced_frame.projection.x;
     let scene = scene_depth_at(frag.xy * enhanced_frame.viewport.zw);
     var thickness = 64.0;
@@ -257,7 +294,7 @@ fn shade_water(
         thickness = clamp(near / scene - near / frag.z, 0.0, 64.0);
     }
     let transmittance = exp(-thickness * 0.28);
-    let body = shade_surface(base, face_normal, world, frag.xy, lighting, sky_light,
+    let body = shade_surface(base, face_normal, world, lighting, sky_light,
         ambient_occlusion, 0u) * 0.55;
     let coverage = 1.0 - (1.0 - fresnel) * transmittance;
     let radiance = (1.0 - fresnel) * (1.0 - transmittance) * body

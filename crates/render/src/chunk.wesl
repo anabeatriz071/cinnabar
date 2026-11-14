@@ -801,7 +801,6 @@ fn shade_cube(in: VertexOutput, sampled: vec4<f32>) -> vec4<f32> {
         colour.rgb,
         quad_shape_normal(in.quad_shape),
         in.world_position,
-        in.clip_position.xy,
         in.lighting,
         in.sky_light,
         in.ambient_occlusion,
